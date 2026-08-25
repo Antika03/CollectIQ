@@ -91,6 +91,10 @@ class C3mrCaringController extends Controller
             ->orderBy('voc')
             ->pluck('voc');
 
+        // Last Sync Information
+        $setting = \App\Models\Setting::first();
+        $lastSyncFormatted = \App\Services\C3mrSyncService::formatIndonesianDate($setting?->last_sync_at);
+
         return view('c3mr.hasil-caring', compact(
             'caringLogs',
             'totalCaring',
@@ -104,7 +108,8 @@ class C3mrCaringController extends Controller
             'paidRate',
             'vocDistribution',
             'petugasList',
-            'vocList'
+            'vocList',
+            'lastSyncFormatted'
         ));
     }
 

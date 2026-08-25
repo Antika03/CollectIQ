@@ -74,6 +74,10 @@ class C3mrPerformanceController extends Controller
         $churnRiskRate = $totalCustomers > 0 ? round(($totalHighCritical / $totalCustomers) * 100, 1) : 0;
         $totalOutstanding = $allCustomers->sum('saldo_piutang');
 
+        // Last Sync Information
+        $setting = \App\Models\Setting::first();
+        $lastSyncFormatted = \App\Services\C3mrSyncService::formatIndonesianDate($setting?->last_sync_at);
+
         return view('c3mr.performance', compact(
             'witelList',
             'riskCounts',
@@ -83,7 +87,8 @@ class C3mrPerformanceController extends Controller
             'churnRiskRate',
             'totalOutstanding',
             'search',
-            'filterLevel'
+            'filterLevel',
+            'lastSyncFormatted'
         ));
     }
 }

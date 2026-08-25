@@ -12,6 +12,10 @@ use Maatwebsite\Excel\Concerns\ToCollection;
 
 class ReportPrqImport implements ToCollection
 {
+    public int $processedCount = 0;
+    public int $createdVisits  = 0;
+    public int $updatedVisits  = 0;
+
     /**
      * Normalisasi Nama AR
      */
@@ -236,7 +240,7 @@ class ReportPrqImport implements ToCollection
             |--------------------------------------------------------------------------
             */
 
-            Visit::updateOrCreate(
+            $visit = Visit::updateOrCreate(
                 [
                     'collect_id' => $collectId,
                 ],
@@ -268,6 +272,13 @@ class ReportPrqImport implements ToCollection
                     'is_ptp' => $isPtp,
                 ]
             );
+
+            $this->processedCount++;
+            if ($visit->wasRecentlyCreated) {
+                $this->createdVisits++;
+            } else {
+                $this->updatedVisits++;
+            }
         }
     }
 }

@@ -33,9 +33,14 @@
                 </div>
             </div>
 
-            <a href="/sync-priti" class="btn btn-primary-telkom d-inline-flex align-items-center gap-2">
-                <i class="bi bi-arrow-repeat"></i> Sync Google Sheet
-            </a>
+            <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url('/c3mr/sync') }}" class="btn btn-primary-telkom d-inline-flex align-items-center gap-2">
+                    <i class="bi bi-arrow-repeat"></i> Buka Sync Data C3MR (Satu Pintu)
+                </a>
+                <a href="/sync-priti" class="btn btn-outline-telkom d-inline-flex align-items-center gap-2" style="font-size:13px;">
+                    <i class="bi bi-cloud-arrow-down"></i> Sync PRITI Only
+                </a>
+            </div>
         </div>
     </div>
 

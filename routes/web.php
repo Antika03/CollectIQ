@@ -62,11 +62,13 @@ Route::get('/risk-score', [RiskScoreController::class, 'index']);
 | C3MR Intelligence
 |--------------------------------------------------------------------------
 */
+Route::get('/c3mr', fn() => redirect('/c3mr/sync'));
 Route::get('/c3mr/hasil-caring/export', [C3mrCaringController::class, 'export'])->name('c3mr.caring.export');
 Route::get('/c3mr/hasil-caring', [C3mrCaringController::class, 'index'])->name('c3mr.caring');
 Route::get('/c3mr/performance', [C3mrPerformanceController::class, 'index'])->name('c3mr.performance');
 
 Route::get('/c3mr/sync', [C3mrSyncController::class, 'index'])->name('c3mr.sync');
+Route::post('/c3mr/sync/all', [C3mrSyncController::class, 'syncAll'])->name('c3mr.sync.all');
 Route::post('/c3mr/sync/data-all', [C3mrSyncController::class, 'syncDataAll']);
 Route::post('/c3mr/sync/caring', [C3mrSyncController::class, 'syncCaring']);
 Route::post('/c3mr/sync/performance', [C3mrSyncController::class, 'syncPerformance']);

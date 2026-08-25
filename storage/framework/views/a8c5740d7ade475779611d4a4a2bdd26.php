@@ -4,6 +4,19 @@
 <?php $__env->startSection('content'); ?>
 
 
+<div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3 p-2 px-3" style="background:#FFFFFF; border:1px solid var(--border); border-radius:10px;">
+    <div class="d-flex align-items-center gap-2" style="font-size:12.5px; color:var(--ink-700);">
+        <i class="bi bi-clock-history" style="color:var(--primary);"></i>
+        <span><strong>Last Sync:</strong> <?php echo e($lastSyncFormatted ?? 'Belum pernah disinkronkan'); ?></span>
+    </div>
+    <div>
+        <a href="<?php echo e(url('/c3mr/sync')); ?>" class="btn btn-primary-telkom btn-sm" style="font-size:12px; padding:4px 12px;">
+            <i class="bi bi-arrow-repeat"></i> Sync Data C3MR
+        </a>
+    </div>
+</div>
+
+
 <div class="row g-3 mb-4">
     <div class="col-6 col-lg-3">
         <div class="card kpi-card h-100">

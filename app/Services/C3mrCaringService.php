@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 class C3mrCaringService
 {
     /**
-     * Parse tanggal dari berbagai format spreadsheet (d/m/Y, Y-m-d, d-m-Y)
+     * Parse tanggal dari berbagai format spreadsheet (d/m/Y, j/n/Y, Y-m-d, d-m-Y)
      */
     public static function parseDate(?string $rawDate): ?Carbon
     {
@@ -23,18 +23,23 @@ class C3mrCaringService
 
         $rawDate = trim($rawDate);
 
-        $formats = ['d/m/Y', 'd/m/Y H:i:s', 'Y-m-d', 'd-m-Y', 'd M Y'];
+        $formats = [
+            'd/m/Y', 'j/n/Y', 'd/n/Y', 'j/m/Y',
+            'd/m/Y H:i:s', 'j/n/Y H:i:s',
+            'Y-m-d', 'd-m-Y', 'j-n-Y',
+            'd M Y', 'j M Y', 'Y/m/d'
+        ];
         foreach ($formats as $fmt) {
             try {
                 return Carbon::createFromFormat($fmt, $rawDate)->startOfDay();
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 // coba format berikutnya
             }
         }
 
         try {
-            return Carbon::parse($rawDate)->startOfDay();
-        } catch (\Exception $e) {
+            return Carbon::parse(str_replace('/', '-', $rawDate))->startOfDay();
+        } catch (\Throwable $e) {
             return null;
         }
     }
@@ -104,7 +109,7 @@ class C3mrCaringService
                 $keterangan   = !empty($row[$ketIdx]) ? trim((string)$row[$ketIdx]) : null;
                 $statusBayar  = !empty($row[$statusBayarIdx]) ? strtoupper(trim((string)$row[$statusBayarIdx])) : 'UNPAID';
                 $petugas      = !empty($row[$petugasIdx]) ? trim((string)$row[$petugasIdx]) : ($agentNameRaw ?: 'OBC PRITI');
-                $tglCaring    = self::parseDate($row[$tglCaringIdx] ?? null) ?: now();
+                $tglCaring    = self::parseDate($row[$tglCaringIdx] ?? null) ?: Carbon::create(2026, 8, 1)->startOfDay();
                 $noHp         = CustomerSyncService::cleanPhoneNumber($row[$noHpIdx] ?? null) ?: ($customer?->no_hp_terbaru);
 
                 $isPtp = false;
@@ -114,30 +119,39 @@ class C3mrCaringService
 
                 $jmlBayar = CustomerSyncService::cleanNumeric($row[$jmlBayarIdx] ?? null);
 
-                $caringLog = CaringLog::updateOrCreate(
-                    [
+                $caringLog = CaringLog::where('nomor_internet', $snd)
+                    ->whereDate('tanggal_caring', $tglCaring->format('Y-m-d'))
+                    ->first();
+
+                $isNew = false;
+                if (!$caringLog) {
+                    $caringLog = new CaringLog([
                         'nomor_internet' => $snd,
                         'tanggal_caring' => $tglCaring->format('Y-m-d'),
-                    ],
-                    [
-                        'customer_id'     => $customer?->id,
-                        'ar_agent_id'     => $arAgent?->id,
-                        'nama_pelanggan'  => $customer?->nama_pelanggan ?: trim((string)($row[$namaIdx] ?? 'Pelanggan ' . $snd)),
-                        'no_hp'           => $noHp,
-                        'petugas_caring'  => $petugas,
-                        'status_caring'   => $statusCaring ?: 'UNCONTACTED',
-                        'voc'             => $voc ?: 'General Caring',
-                        'keterangan'      => $keterangan,
-                        'frekuensi'       => trim((string)($row[$frekIdx] ?? '1X')),
-                        'is_ptp'          => $isPtp,
-                        'status_bayar'    => str_contains($statusBayar, 'PAID') && !str_contains($statusBayar, 'UN') ? 'PAID' : 'UNPAID',
-                        'jumlah_bayar'    => $jmlBayar,
-                        'bill_category'   => trim((string)($row[$billCatIdx] ?? 'Eksisting')),
-                        'umur_customer'   => trim((string)($row[$umurIdx] ?? '-')),
-                    ]
-                );
+                    ]);
+                    $isNew = true;
+                }
 
-                if ($caringLog->wasRecentlyCreated) {
+                $caringLog->fill([
+                    'customer_id'     => $customer?->id,
+                    'ar_agent_id'     => $arAgent?->id,
+                    'nama_pelanggan'  => $customer?->nama_pelanggan ?: trim((string)($row[$namaIdx] ?? 'Pelanggan ' . $snd)),
+                    'no_hp'           => $noHp,
+                    'petugas_caring'  => $petugas,
+                    'status_caring'   => $statusCaring ?: 'UNCONTACTED',
+                    'voc'             => $voc ?: 'General Caring',
+                    'keterangan'      => $keterangan,
+                    'frekuensi'       => trim((string)($row[$frekIdx] ?? '1X')),
+                    'is_ptp'          => $isPtp,
+                    'status_bayar'    => str_contains($statusBayar, 'PAID') && !str_contains($statusBayar, 'UN') ? 'PAID' : 'UNPAID',
+                    'jumlah_bayar'    => $jmlBayar,
+                    'bill_category'   => trim((string)($row[$billCatIdx] ?? 'Eksisting')),
+                    'umur_customer'   => trim((string)($row[$umurIdx] ?? '-')),
+                ]);
+
+                $caringLog->save();
+
+                if ($isNew) {
                     $imported++;
                 } else {
                     $updated++;

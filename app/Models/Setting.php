@@ -9,5 +9,13 @@ class Setting extends Model
     protected $fillable = [
         'report_prq_url',
         'viseepro_url',
+        'last_sync_at',
+        'last_sync_status',
+        'last_sync_result',
+    ];
+
+    protected $casts = [
+        'last_sync_at'     => 'datetime',
+        'last_sync_result' => 'array',
     ];
 }
