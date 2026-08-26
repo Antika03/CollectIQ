@@ -428,7 +428,7 @@ async function triggerMasterSync() {
         || '{{ csrf_token() }}';
 
     // Gunakan relative path /c3mr/sync/all agar tidak terjadi masalah port mismatch
-    const syncEndpoint = '/c3mr/sync/all'; — cukup string relative biasa, tanpa helper url()
+    const syncEndpoint = '/c3mr/sync/all';
 
     try {
         const response = await fetch(syncEndpoint, {
