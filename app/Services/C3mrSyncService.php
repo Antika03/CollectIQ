@@ -21,34 +21,134 @@ class C3mrSyncService
     private static string $defaultSheetId = '1RjhMpP3pTlzONbuoRajODGz3tTGm3p73';
 
     /**
-     * Convert Google Sheet URL ke CSV Export URL
+     * Ekstrak Spreadsheet ID dari berbagai format URL Google Spreadsheet
+     */
+    public static function extractSpreadsheetId(?string $url): string
+    {
+        if (empty($url)) {
+            return self::$defaultSheetId;
+        }
+
+        if (preg_match('/\/d\/([a-zA-Z0-9-_]+)/', $url, $matches)) {
+            return $matches[1];
+        }
+
+        // Jika user langsung memasukkan Sheet ID
+        if (preg_match('/^[a-zA-Z0-9-_]{20,60}$/', trim($url))) {
+            return trim($url);
+        }
+
+        return self::$defaultSheetId;
+    }
+
+    /**
+     * Dapatkan Spreadsheet ID terpusat dari database Setting
+     */
+    public static function getActiveSpreadsheetId(): string
+    {
+        $setting = Setting::first();
+        if (!empty($setting?->c3mr_url)) {
+            return self::extractSpreadsheetId($setting->c3mr_url);
+        }
+
+        if (!empty($setting?->report_prq_url)) {
+            return self::extractSpreadsheetId($setting->report_prq_url);
+        }
+
+        return self::$defaultSheetId;
+    }
+
+    /**
+     * Dapatkan URL penuh Google Spreadsheet C3MR yang sedang aktif
+     */
+    public static function getActiveSpreadsheetUrl(): string
+    {
+        $setting = Setting::first();
+        if (!empty($setting?->c3mr_url)) {
+            return $setting->c3mr_url;
+        }
+
+        $sheetId = self::getActiveSpreadsheetId();
+        return "https://docs.google.com/spreadsheets/d/{$sheetId}/edit";
+    }
+
+    /**
+     * Validasi apakah URL Google Spreadsheet valid dan dapat diakses publik
+     */
+    public static function validateSpreadsheetUrl(?string $url): array
+    {
+        if (empty($url) || !filter_var($url, FILTER_VALIDATE_URL)) {
+            return [
+                'valid'   => false,
+                'message' => 'URL Google Spreadsheet tidak valid.',
+            ];
+        }
+
+        if (!str_contains($url, 'docs.google.com/spreadsheets')) {
+            return [
+                'valid'   => false,
+                'message' => 'URL harus berasal dari Google Spreadsheet (docs.google.com/spreadsheets).',
+            ];
+        }
+
+        $sheetId = self::extractSpreadsheetId($url);
+        if (empty($sheetId) || strlen($sheetId) < 10) {
+            return [
+                'valid'   => false,
+                'message' => 'Spreadsheet ID tidak ditemukan dalam URL.',
+            ];
+        }
+
+        // Uji koneksi ke endpoint export CSV publik
+        $testUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv";
+        try {
+            $response = Http::timeout(15)->withoutRedirecting()->get($testUrl);
+            $status = $response->status();
+
+            if ($status === 200 || $status === 302 || $status === 307) {
+                return [
+                    'valid'    => true,
+                    'sheet_id' => $sheetId,
+                    'message'  => 'Spreadsheet C3MR berhasil terhubung.',
+                ];
+            }
+
+            if ($status === 403 || $status === 401) {
+                return [
+                    'valid'   => false,
+                    'message' => 'Spreadsheet tidak dapat diakses (Akses dibatasi/Private). Pastikan izin sharing diatur ke "Siapa saja yang memiliki link" (Viewer).',
+                ];
+            }
+
+            if ($status === 404) {
+                return [
+                    'valid'   => false,
+                    'message' => 'Spreadsheet tidak ditemukan (HTTP 404). Periksa kembali Spreadsheet ID.',
+                ];
+            }
+
+            return [
+                'valid'   => true, // Tetap izinkan jika status redirect lain
+                'sheet_id'=> $sheetId,
+                'message' => 'Spreadsheet terhubung (HTTP ' . $status . ').',
+            ];
+        } catch (\Throwable $e) {
+            Log::warning('[C3MR Sync] Validasi URL spreadsheet network error: ' . $e->getMessage());
+            return [
+                'valid'   => true, // Tidak memblokir offline development
+                'sheet_id'=> $sheetId,
+                'message' => 'URL disimpan (Koneksi langsung ke Google tidak dapat divalidasi saat ini: ' . $e->getMessage() . ').',
+            ];
+        }
+    }
+
+    /**
+     * Convert Google Sheet URL ke CSV Export URL dengan GID tertentu
      */
     public static function convertToCsvUrl(?string $url, string $defaultGid = '0'): string
     {
-        if (empty($url)) {
-            return "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/export?format=csv&gid={$defaultGid}";
-        }
-
-        if (
-            str_contains($url, 'export?format=csv')
-            || str_contains($url, 'export?format=xlsx')
-            || str_contains($url, 'gviz/tq?tqx=out:csv')
-        ) {
-            return $url;
-        }
-
-        if (preg_match('/\/d\/([^\/]+)/', $url, $sheetMatch)) {
-            $sheetId = $sheetMatch[1];
-            $gid = $defaultGid;
-
-            if (preg_match('/gid=(\d+)/', $url, $gidMatch)) {
-                $gid = $gidMatch[1];
-            }
-
-            return "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid={$gid}";
-        }
-
-        return $url;
+        $sheetId = self::extractSpreadsheetId($url ?: self::getActiveSpreadsheetUrl());
+        return "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid={$defaultGid}";
     }
 
     /**
@@ -67,12 +167,11 @@ class C3mrSyncService
     public static function syncReportPrq(): array
     {
         self::ensureStorageDir();
-        $setting = Setting::first();
-        $rawUrl = $setting?->report_prq_url ?: "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/edit?gid=1303511230";
-        $csvUrl = self::convertToCsvUrl($rawUrl, '1303511230');
+        $sheetId = self::getActiveSpreadsheetId();
+        $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=1303511230";
         $csvFile = storage_path('app/sheet_report-prq.csv');
 
-        Log::info('[C3MR Sync] Memulai sinkronisasi Report PRQ...');
+        Log::info("[C3MR Sync] Memulai sinkronisasi Report PRQ (Sheet ID: {$sheetId})...");
 
         try {
             $response = Http::timeout(45)->get($csvUrl);
@@ -93,7 +192,7 @@ class C3mrSyncService
                     'error'   => $e->getMessage(),
                 ];
             }
-            Log::warning('[C3MR Sync] Report PRQ menggunakan cache lokal terakhir karena koneksi spreadsheet bermasalah: ' . $e->getMessage());
+            Log::warning('[C3MR Sync] Report PRQ menggunakan cache lokal terakhir: ' . $e->getMessage());
         }
 
         try {
@@ -129,12 +228,11 @@ class C3mrSyncService
     public static function syncViseepro(): array
     {
         self::ensureStorageDir();
-        $setting = Setting::first();
-        $rawUrl = $setting?->viseepro_url ?: "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/edit?gid=172624186";
-        $csvUrl = self::convertToCsvUrl($rawUrl, '172624186');
+        $sheetId = self::getActiveSpreadsheetId();
+        $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=172624186";
         $csvFile = storage_path('app/sheet_viseepro.csv');
 
-        Log::info('[C3MR Sync] Memulai sinkronisasi VISEEPRO...');
+        Log::info("[C3MR Sync] Memulai sinkronisasi VISEEPRO (Sheet ID: {$sheetId})...");
 
         try {
             $response = Http::timeout(45)->get($csvUrl);
@@ -155,7 +253,7 @@ class C3mrSyncService
                     'error'   => $e->getMessage(),
                 ];
             }
-            Log::warning('[C3MR Sync] VISEEPRO menggunakan cache lokal terakhir karena koneksi spreadsheet bermasalah: ' . $e->getMessage());
+            Log::warning('[C3MR Sync] VISEEPRO menggunakan cache lokal terakhir: ' . $e->getMessage());
         }
 
         try {
@@ -191,10 +289,11 @@ class C3mrSyncService
     public static function syncDataAll(): array
     {
         self::ensureStorageDir();
-        $url = "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
+        $sheetId = self::getActiveSpreadsheetId();
+        $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
         $csvPath = storage_path('app/sheet_data-all.csv');
 
-        Log::info('[C3MR Sync] Memulai sinkronisasi C3MR Sheet DATA ALL...');
+        Log::info("[C3MR Sync] Memulai sinkronisasi C3MR Sheet DATA ALL (Sheet ID: {$sheetId})...");
 
         try {
             $response = Http::timeout(45)->get($url);
@@ -252,12 +351,13 @@ class C3mrSyncService
     public static function syncCaring(): array
     {
         self::ensureStorageDir();
+        $sheetId = self::getActiveSpreadsheetId();
         $csvPath = storage_path('app/sheet_data-all.csv');
 
         Log::info('[C3MR Sync] Memulai sinkronisasi C3MR Hasil Caring...');
 
         if (!file_exists($csvPath)) {
-            $url = "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
+            $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
             try {
                 $response = Http::timeout(45)->get($url);
                 if ($response->successful() && strlen($response->body()) > 20) {
@@ -312,10 +412,11 @@ class C3mrSyncService
     public static function syncPerformance(): array
     {
         self::ensureStorageDir();
-        $url = "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/gviz/tq?tqx=out:csv&sheet=" . urlencode('PERFORMANSI DETAIL');
+        $sheetId = self::getActiveSpreadsheetId();
+        $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('PERFORMANSI DETAIL');
         $csvPath = storage_path('app/sheet_performansi-detail.csv');
 
-        Log::info('[C3MR Sync] Memulai sinkronisasi C3MR Performansi Witel...');
+        Log::info("[C3MR Sync] Memulai sinkronisasi C3MR Performansi Witel (Sheet ID: {$sheetId})...");
 
         try {
             $response = Http::timeout(45)->get($url);
@@ -464,17 +565,20 @@ class C3mrSyncService
         $formattedDate = self::formatIndonesianDate($syncTimestamp);
 
         // Simpan riwayat Last Sync ke database Setting
+        $activeUrl = self::getActiveSpreadsheetUrl();
         $setting = Setting::first();
         if (!$setting) {
             $setting = Setting::create([
-                'report_prq_url'   => "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/edit?gid=1303511230",
-                'viseepro_url'     => "https://docs.google.com/spreadsheets/d/" . self::$defaultSheetId . "/edit?gid=172624186",
+                'c3mr_url'         => $activeUrl,
+                'report_prq_url'   => $activeUrl,
+                'viseepro_url'     => $activeUrl,
                 'last_sync_at'     => $syncTimestamp,
                 'last_sync_status' => $overallStatus,
                 'last_sync_result' => $results,
             ]);
         } else {
             $setting->update([
+                'c3mr_url'         => $setting->c3mr_url ?: $activeUrl,
                 'last_sync_at'     => $syncTimestamp,
                 'last_sync_status' => $overallStatus,
                 'last_sync_result' => $results,

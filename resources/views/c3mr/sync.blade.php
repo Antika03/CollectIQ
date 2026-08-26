@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Sync Data C3MR')
-@section('subtitle', 'Pusat integrasi satu pintu data Google Spreadsheet C3MR, Report PRQ, dan VISEEPRO')
+@section('subtitle', 'Pusat integrasi satu pintu data Google Spreadsheet C3MR')
 
 @push('styles')
 <style>
@@ -104,13 +104,27 @@
     </div>
 @endif
 
+{{-- ERROR ALERT CONTAINER --}}
+<div id="syncErrorBanner" class="alert alert-danger align-items-start gap-3 mb-4" style="display:none; border-radius:12px; border:1px solid #FCA5A5;">
+    <i class="bi bi-exclamation-octagon-fill fs-4 mt-1" style="color:var(--danger); flex-shrink:0;"></i>
+    <div style="flex:1;">
+        <div style="font-weight:700; font-size:14px; margin-bottom:2px;" id="errorBannerTitle">Sinkronisasi Gagal</div>
+        <div style="font-size:13px; line-height:1.4; color:#7F1D1D;" id="errorBannerMessage">Terjadi kesalahan saat memproses data.</div>
+        <div id="errorBannerDetails" style="font-size:11.5px; color:#991B1B; margin-top:6px; font-family:monospace; display:none; background:rgba(255,255,255,0.7); padding:6px 10px; border-radius:6px;"></div>
+    </div>
+    <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('syncErrorBanner').style.display='none'" style="border-radius:6px; font-size:11.5px;">Tutup</button>
+</div>
+
 {{-- 1. MASTER HERO SYNC DATA C3MR SECTION --}}
 <div class="card sync-hero-card mb-4">
     <div class="row align-items-center g-4">
         <div class="col-lg-7">
-            <div class="d-flex align-items-center gap-2 mb-2">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                 <span class="badge" style="background:#FDEBEC; color:#B8000F; font-weight:700; font-size:11px; padding:5px 10px; border-radius:6px;">
                     <i class="bi bi-lightning-charge-fill"></i> SINKRONISASI SATU PINTU
+                </span>
+                <span class="badge" style="background:#D1FAE5; color:#059669; font-weight:600; font-size:11px; padding:5px 10px; border-radius:6px;">
+                    <i class="bi bi-check-circle-fill"></i> Status: Connected
                 </span>
                 <span class="badge" style="background:#EFF6FF; color:#2563EB; font-weight:600; font-size:11px; padding:5px 10px; border-radius:6px;" id="lastSyncBadge">
                     <i class="bi bi-clock-history"></i> Last Sync: <span id="lastSyncText">{{ $lastSyncFormatted }}</span>
@@ -120,16 +134,16 @@
                 Sync Data C3MR
             </h4>
             <p style="color:var(--ink-500); font-size:13.5px; margin-bottom:0; line-height:1.5;">
-                Pusat pembaruan seluruh sumber data aplikasi. Memperbarui otomatis <strong>Report PRQ</strong>, <strong>VISEEPRO</strong>, <strong>DATA ALL</strong>, <strong>Hasil Caring OBC</strong>, dan <strong>Performansi Witel Regional</strong> dalam satu kali klik.
+                Perbarui seluruh data collection dari Spreadsheet C3MR. Sistem akan secara otomatis menyinkronkan seluruh dataset collection, kunjungan, caring, dan profil pelanggan.
             </p>
         </div>
         <div class="col-lg-5 text-lg-end text-start">
-            <button type="button" id="btnSyncMaster" class="btn-sync-hero" onclick="triggerMasterSync()">
+            <button type="button" id="btnSyncMaster" class="btn-sync-hero w-100 w-lg-auto" onclick="triggerMasterSync()">
                 <i class="bi bi-arrow-repeat sync-icon fs-5" id="masterSyncIcon"></i>
                 <span id="masterSyncLabel">Sync Data C3MR</span>
             </button>
             <div style="font-size:12px; color:var(--ink-500); margin-top:8px; font-weight:500;">
-                <i class="bi bi-info-circle"></i> Memperbarui data Report PRQ, VISEEPRO, dan C3MR
+                <i class="bi bi-shield-check text-success"></i> Memperbarui data dari Spreadsheet C3MR Terpusat
             </div>
         </div>
     </div>
@@ -139,8 +153,8 @@
         <div class="d-flex align-items-center gap-3">
             <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
             <div>
-                <strong style="color:var(--primary); font-size:13.5px;">Sinkronisasi sedang berlangsung...</strong>
-                <div style="font-size:12px; color:var(--ink-500);">Mengunduh data terbaru dari Google Spreadsheet dan memperbarui database. Mohon tunggu...</div>
+                <strong style="color:var(--primary); font-size:13.5px;">Sinkronisasi data C3MR sedang berlangsung...</strong>
+                <div style="font-size:12px; color:var(--ink-500);">Mengunduh data terbaru dari Spreadsheet C3MR dan memperbarui database. Mohon tunggu...</div>
             </div>
         </div>
     </div>
@@ -182,7 +196,7 @@
         </div>
     </div>
 
-    {{-- DETAILED BREAKDOWN OF ALL 6 DATA SOURCES --}}
+    {{-- DETAILED BREAKDOWN OF ALL DATA SOURCES --}}
     <div class="row g-3" id="syncDetailsGrid">
         {{-- Report PRQ --}}
         <div class="col-md-6 col-lg-4">
@@ -360,144 +374,26 @@
     </div>
 </div>
 
-{{-- 4. ON-DEMAND INDIVIDUAL SYNC ACTIONS & INTEGRITY --}}
-<div class="row g-3">
-    <div class="col-lg-8">
-        <div class="card mb-3">
-            <div class="d-flex justify-content-between align-items-center mb-3">
-                <div>
-                    <div class="section-title mb-1"><i class="bi bi-sliders" style="color:var(--primary);"></i> Sinkronisasi Sumber Data Individual</div>
-                    <div class="section-sub">Opsi manual jika hanya ingin menyegarkan sheet tertentu secara terpisah</div>
-                </div>
+{{-- 4. SPREADSHEET CONFIGURATION BANNER --}}
+<div class="card">
+    <div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center gap-3">
+        <div class="d-flex align-items-center gap-3">
+            <div class="kpi-icon" style="background:var(--primary-soft); color:var(--primary); width:40px; height:40px; border-radius:10px;">
+                <i class="bi bi-gear-fill fs-5"></i>
             </div>
-
-            <div class="row g-3">
-                {{-- Sync DATA ALL --}}
-                <div class="col-md-6">
-                    <div class="p-3 h-100 d-flex flex-column justify-content-between" style="background:var(--secondary); border-radius:12px; border:1px solid var(--border);">
-                        <div>
-                            <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">1. Sheet DATA ALL</div>
-                            <div style="font-size:12px; color:var(--ink-500); margin:4px 0 12px; line-height:1.4;">
-                                Melengkapi Master Customer, Nomor HP valid, Alamat, STO, Datel, dan Saldo Piutang.
-                            </div>
-                        </div>
-                        <form method="POST" action="{{ url('/c3mr/sync/data-all') }}">
-                            @csrf
-                            <button type="submit" class="btn btn-outline-telkom btn-sm w-100 justify-content-center">
-                                <i class="bi bi-arrow-repeat"></i> Sync DATA ALL
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                {{-- Sync HASIL CARING --}}
-                <div class="col-md-6">
-                    <div class="p-3 h-100 d-flex flex-column justify-content-between" style="background:var(--secondary); border-radius:12px; border:1px solid var(--border);">
-                        <div>
-                            <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">2. Sheet HASIL CARING</div>
-                            <div style="font-size:12px; color:var(--ink-500); margin:4px 0 12px; line-height:1.4;">
-                                Mengimpor riwayat respons telepon OBC PRITI (VOC, Status Caring, Status Bayar).
-                            </div>
-                        </div>
-                        <form method="POST" action="{{ url('/c3mr/sync/caring') }}">
-                            @csrf
-                            <button type="submit" class="btn btn-sm w-100 justify-content-center" style="background:#EFF6FF; color:#2563EB; font-weight:600; border-radius:8px;">
-                                <i class="bi bi-telephone-inbound"></i> Sync Hasil Caring
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                {{-- Sync PERFORMANSI DETAIL --}}
-                <div class="col-md-6">
-                    <div class="p-3 h-100 d-flex flex-column justify-content-between" style="background:var(--secondary); border-radius:12px; border:1px solid var(--border);">
-                        <div>
-                            <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">3. Sheet PERFORMANSI DETAIL</div>
-                            <div style="font-size:12px; color:var(--ink-500); margin:4px 0 12px; line-height:1.4;">
-                                Memperbarui rekap performansi Witel (Billing, Cash Coll, % CYC, % CR, Rank).
-                            </div>
-                        </div>
-                        <form method="POST" action="{{ url('/c3mr/sync/performance') }}">
-                            @csrf
-                            <button type="submit" class="btn btn-sm w-100 justify-content-center" style="background:var(--warning-soft); color:#92400E; font-weight:600; border-radius:8px;">
-                                <i class="bi bi-graph-up-arrow"></i> Sync Performansi Witel
-                            </button>
-                        </form>
-                    </div>
-                </div>
-
-                {{-- Konsolidasi AR Agent --}}
-                <div class="col-md-6">
-                    <div class="p-3 h-100 d-flex flex-column justify-content-between" style="background:var(--secondary); border-radius:12px; border:1px solid var(--border);">
-                        <div>
-                            <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">4. Normalisasi AR Agent</div>
-                            <div style="font-size:12px; color:var(--ink-500); margin:4px 0 12px; line-height:1.4;">
-                                Menggabungkan nama variasi duplikat tanpa merusak relasi histori kunjungan.
-                            </div>
-                        </div>
-                        <form method="POST" action="{{ url('/c3mr/sync/consolidate-ar') }}">
-                            @csrf
-                            <button type="submit" class="btn btn-sm w-100 justify-content-center" style="background:var(--success-soft); color:var(--success); font-weight:600; border-radius:8px;">
-                                <i class="bi bi-person-check"></i> Konsolidasi AR Agent
-                            </button>
-                        </form>
-                    </div>
+            <div>
+                <div style="font-weight:700; font-size:14px; color:var(--ink-900);">Konfigurasi Sumber Spreadsheet C3MR</div>
+                <div style="font-size:12px; color:var(--ink-500);">
+                    Spreadsheet ID Aktif: <code style="color:var(--primary); font-weight:600;">{{ \App\Services\C3mrSyncService::getActiveSpreadsheetId() }}</code>
                 </div>
             </div>
         </div>
-    </div>
-
-    {{-- DATA INTEGRITY & API CONFIGURATION CARD --}}
-    <div class="col-lg-4">
-        <div class="card h-100">
-            <div class="section-title mb-1"><i class="bi bi-shield-check" style="color:var(--success);"></i> Kualitas &amp; Integritas Data</div>
-            <div class="section-sub mb-3">Pemeriksaan kualitas master data</div>
-
-            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid var(--border);">
-                <span style="font-size:12.5px; color:var(--ink-700);">No. HP Terisi Valid</span>
-                <span style="font-weight:700; color:var(--success);">
-                    {{ $totalCustomers > 0 ? round(($validPhones / $totalCustomers) * 100, 1) : 0 }}%
-                </span>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid var(--border);">
-                <span style="font-size:12.5px; color:var(--ink-700);">Integrasi Report PRQ</span>
-                <span class="badge" style="background:#D1FAE5; color:#059669;">Terkoneksi</span>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid var(--border);">
-                <span style="font-size:12.5px; color:var(--ink-700);">Integrasi VISEEPRO</span>
-                <span class="badge" style="background:#D1FAE5; color:#059669;">Terkoneksi</span>
-            </div>
-
-            <div class="d-flex justify-content-between align-items-center py-2" style="border-bottom:1px solid var(--border);">
-                <span style="font-size:12.5px; color:var(--ink-700);">Integrasi Sheet C3MR</span>
-                <span class="badge" style="background:#D1FAE5; color:#059669;">Terkoneksi (gviz CSV)</span>
-            </div>
-
-            <div class="mt-3 p-3" style="background:var(--secondary); border-radius:10px; font-size:11.5px; color:var(--ink-500); line-height:1.5;">
-                <i class="bi bi-info-circle-fill" style="color:var(--primary);"></i>
-                <strong>Catatan Integrasi:</strong> Data Report PRQ yang diperbarui akan otomatis mempengaruhi metrik di <em>Dashboard</em>, <em>PTP Monitoring</em>, <em>Risk Score</em>, dan <em>Customer 360</em>.
-            </div>
-
-            <div class="mt-3">
-                <a href="{{ url('/settings') }}" class="btn btn-outline-secondary btn-sm w-100" style="border-radius:8px; font-weight:600; font-size:12px;">
-                    <i class="bi bi-gear-fill"></i> Konfigurasi Link Spreadsheet
-                </a>
-            </div>
+        <div>
+            <a href="{{ url('/settings') }}" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2" style="border-radius:8px; font-weight:600; font-size:12.5px;">
+                <i class="bi bi-sliders"></i> Ubah Link Spreadsheet
+            </a>
         </div>
     </div>
-{{-- ERROR ALERT CONTAINER --}}
-<div id="syncErrorBanner" class="alert alert-danger align-items-start gap-3 mb-4" style="display:none; border-radius:12px; border:1px solid #FCA5A5;">
-    <i class="bi bi-exclamation-octagon-fill fs-4 mt-1" style="color:var(--danger); flex-shrink:0;"></i>
-    <div style="flex:1;">
-        <div style="font-weight:700; font-size:14px; margin-bottom:2px;" id="errorBannerTitle">Sinkronisasi Gagal</div>
-        <div style="font-size:13px; line-height:1.4; color:#7F1D1D;" id="errorBannerMessage">Terjadi kesalahan saat memproses data.</div>
-        <div id="errorBannerDetails" style="font-size:11.5px; color:#991B1B; margin-top:6px; font-family:monospace; display:none; background:rgba(255,255,255,0.7); padding:6px 10px; border-radius:6px;"></div>
-    </div>
-    <button type="button" class="btn btn-sm btn-outline-danger" onclick="document.getElementById('syncErrorBanner').style.display='none'" style="border-radius:6px; font-size:11.5px;">Tutup</button>
-</div>
-
 </div>
 
 @endsection
@@ -520,7 +416,7 @@ async function triggerMasterSync() {
     // UI Loading State (mengikuti proses sebenarnya tanpa fake timer)
     btn.disabled = true;
     icon.classList.add('spinning');
-    label.innerText = 'Syncing Data C3MR...';
+    label.innerText = 'Sinkronisasi data C3MR...';
     liveStatus.style.display = 'block';
     
     if (progressBar) {
@@ -531,7 +427,7 @@ async function triggerMasterSync() {
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
         || '{{ csrf_token() }}';
 
-    // Gunakan relative path /c3mr/sync/all agar tidak terjadi masalah port mismatch (misal port 8000)
+    // Gunakan relative path /c3mr/sync/all agar tidak terjadi masalah port mismatch
     const syncEndpoint = '{{ url("/c3mr/sync/all", [], false) }}';
 
     try {

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 class Setting extends Model
 {
     protected $fillable = [
+        'c3mr_url',
         'report_prq_url',
         'viseepro_url',
         'last_sync_at',
