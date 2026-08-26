@@ -542,9 +542,6 @@ body{
     <div class="menu-section">
         <div class="sidebar-menu-label">System</div>
         <div class="menu">
-            <a href="<?php echo e(url('/import')); ?>" class="<?php echo e(request()->is('import*') ? 'active' : ''); ?>">
-                <i class="bi bi-upload"></i> Import Data
-            </a>
             <a href="<?php echo e(url('/settings')); ?>" class="<?php echo e(request()->is('settings*') ? 'active' : ''); ?>">
                 <i class="bi bi-gear-fill"></i> Settings
             </a>
