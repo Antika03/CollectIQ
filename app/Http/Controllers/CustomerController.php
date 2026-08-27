@@ -3,16 +3,38 @@
 namespace App\Http\Controllers;
 
 use App\Models\Customer;
+use App\Models\ArAgent;
 use App\Services\ChurnRiskService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 class CustomerController extends Controller
 {
     public function index(Request $request)
     {
+        $user = Auth::user();
         $search = $request->input('search', '');
 
         $customers = Customer::query();
+
+        // Jika user login sebagai AR, batasi hanya ke data pelanggan miliknya
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $customers->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        } elseif ($request->filled('ar_agent_id')) {
+            $arId = $request->ar_agent_id;
+            $customers->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
 
         if ($search) {
             $customers->where(function ($query) use ($search) {
@@ -38,7 +60,15 @@ class CustomerController extends Controller
             }
         }
 
-        // Sorting: default by latest ID, or by saldo piutang desc
+        if ($request->filled('is_pranpc')) {
+            if ($request->is_pranpc === '1') {
+                $customers->where('is_pranpc', true);
+            } else {
+                $customers->where('is_pranpc', false);
+            }
+        }
+
+        // Sorting
         $sortBy = $request->input('sort_by', 'id');
         if ($sortBy === 'saldo_piutang') {
             $customers->orderByDesc('saldo_piutang');
@@ -49,18 +79,33 @@ class CustomerController extends Controller
         }
 
         $customers = $customers
+            ->with(['assignedArAgent'])
             ->withCount('visits')
             ->paginate(25)
             ->withQueryString();
 
-        $totalCustomers = Customer::count();
-        $highRiskCount  = Customer::whereIn('risk_level', ['high', 'critical'])->count();
-        $activePtpCount = Customer::where('pending_ptp_count', '>', 0)->count();
-        $totalPiutang   = Customer::sum('saldo_piutang');
-        $staleCount     = Customer::where(function ($q) {
+        $baseCountQuery = Customer::query();
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $baseCountQuery->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
+
+        $totalCustomers = (clone $baseCountQuery)->count();
+        $highRiskCount  = (clone $baseCountQuery)->whereIn('risk_level', ['high', 'critical'])->count();
+        $activePtpCount = (clone $baseCountQuery)->where('pending_ptp_count', '>', 0)->count();
+        $pranpcCount    = (clone $baseCountQuery)->where('is_pranpc', true)->count();
+        $totalPiutang   = (clone $baseCountQuery)->sum('saldo_piutang');
+        $staleCount     = (clone $baseCountQuery)->where(function ($q) {
             $q->whereNull('last_visit_at')
               ->orWhere('last_visit_at', '<=', now()->subDays(14));
         })->count();
+
+        $allAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
         return view('customers.index', [
             'customers'      => $customers,
@@ -68,14 +113,30 @@ class CustomerController extends Controller
             'totalCustomers' => $totalCustomers,
             'highRiskCount'  => $highRiskCount,
             'activePtpCount' => $activePtpCount,
+            'pranpcCount'    => $pranpcCount,
             'totalPiutang'   => $totalPiutang,
             'staleCount'     => $staleCount,
+            'allAgents'      => $allAgents,
         ]);
     }
 
     public function show(Customer $customer)
     {
+        $user = Auth::user();
+
+        // Otorisasi AR: jika user AR, pastikan customer adalah tanggung jawabnya
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $isAssigned = ($customer->assigned_ar_agent_id === $arId);
+            $hasVisited = $customer->visits()->where('ar_agent_id', $arId)->exists();
+
+            if (!$isAssigned && !$hasVisited) {
+                abort(403, 'Akses Ditolak: Anda tidak memiliki wewenang untuk melihat detail pelanggan milik AR lain.');
+            }
+        }
+
         $customer->load([
+            'assignedArAgent',
             'visits.arAgent',
             'caringLogs',
             'viseeproData',
@@ -91,7 +152,18 @@ class CustomerController extends Controller
      */
     public function export(Request $request)
     {
+        $user = Auth::user();
         $query = Customer::query();
+
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $query->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -111,6 +183,13 @@ class CustomerController extends Controller
                 $query->where('saldo_piutang', '>', 0);
             } else {
                 $query->where('saldo_piutang', '<=', 0);
+            }
+        }
+        if ($request->filled('is_pranpc')) {
+            if ($request->is_pranpc === '1') {
+                $query->where('is_pranpc', true);
+            } else {
+                $query->where('is_pranpc', false);
             }
         }
 
@@ -136,6 +215,9 @@ class CustomerController extends Controller
                 'No HP Terbaru',
                 'Email',
                 'Layanan',
+                'Kategori Tagihan',
+                'Status PRANPC',
+                'AR Penanggung Jawab',
                 'Datel',
                 'STO',
                 'Alamat',
@@ -146,7 +228,7 @@ class CustomerController extends Controller
                 'Visit Terakhir',
             ]);
 
-            $query->chunk(100, function ($customers) use ($handle) {
+            $query->with('assignedArAgent')->chunk(200, function ($customers) use ($handle) {
                 foreach ($customers as $c) {
                     fputcsv($handle, [
                         $c->id,
@@ -156,6 +238,9 @@ class CustomerController extends Controller
                         $c->no_hp_terbaru ?? '',
                         $c->email ?? '',
                         $c->nama_layanan_internet ?? '',
+                        $c->bill_category ?? 'Eksisting',
+                        $c->is_pranpc ? 'PRANPC' : 'NON-PRANPC',
+                        $c->assignedArAgent ? $c->assignedArAgent->name : '-',
                         $c->datel ?? '',
                         $c->sto ?? '',
                         $c->alamat ?? '',

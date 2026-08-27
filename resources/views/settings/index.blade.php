@@ -1,108 +1,200 @@
 @extends('layouts.app')
 
-@section('title', 'Settings')
-@section('subtitle', 'Konfigurasi sumber data Google Spreadsheet C3MR terpusat')
+@section('title', 'Pengaturan Sistem & Integrasi')
+@section('subtitle', 'Konfigurasi Sumber Data Spreadsheet PRITI, C3MR & Bot Telegram')
 
 @section('content')
+<div class="d-flex flex-column gap-4" style="max-width: 960px;">
 
-<div class="row g-4">
-    <div class="col-lg-8 col-xl-7">
-        <div class="card">
-            <div class="d-flex align-items-center justify-content-between pb-3 mb-4" style="border-bottom:1px solid var(--border);">
-                <div>
-                    <div class="section-title mb-1">
-                        <i class="bi bi-file-earmark-spreadsheet-fill" style="color:var(--primary);"></i> Spreadsheet C3MR
-                    </div>
-                    <div class="section-sub">
-                        Satu tautan Google Spreadsheet untuk seluruh pembaruan data aplikasi
+    {{-- KARTU INTEGRASI GOOGLE SPREADSHEET --}}
+    <div class="card">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+                <div class="section-title">
+                    <i class="bi bi-file-earmark-spreadsheet-fill text-success me-2"></i> Sumber Data Google Spreadsheet
+                </div>
+                <div class="section-sub">
+                    Pusat konfigurasi tautan Google Spreadsheet untuk PRITI DATA dan C3MR
+                </div>
+            </div>
+            <span class="badge" style="background: #F1F5F9; color: var(--ink-700); font-size: 11.5px;">
+                2 Sumber Terintegrasi
+            </span>
+        </div>
+
+        <form action="{{ route('settings.update') }}" method="POST">
+            @csrf
+
+            <div class="row g-3">
+                {{-- 1. PRITI DATA --}}
+                <div class="col-12">
+                    <div class="p-3 rounded border" style="background: #FAFAFA;">
+                        <label class="form-label d-flex align-items-center justify-content-between" for="pritiUrlInput">
+                            <span style="font-weight: 700; color: var(--ink-900);">
+                                <i class="bi bi-1-circle-fill text-danger me-1"></i> Google Spreadsheet PRITI DATA (Sheet: Collection)
+                            </span>
+                            @if(!empty($pritiSheetId))
+                                <span class="badge bg-light text-muted" style="font-size: 11px;">
+                                    Sheet ID: {{ substr($pritiSheetId, 0, 14) }}...
+                                </span>
+                            @endif
+                        </label>
+                        <div class="input-group">
+                            <input id="pritiUrlInput" type="url" name="priti_url" value="{{ old('priti_url', $activePritiUrl) }}" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/.../edit" required>
+                            <a href="{{ $activePritiUrl }}" target="_blank" class="btn btn-outline-secondary" title="Buka di tab baru">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </div>
+                        <div class="form-text" style="font-size: 11.5px; color: var(--ink-500);">
+                            Mengandung data hasil kunjungan lapangan (~3.500 rows), nomor HP update, foto, dan Chat ID Telegram AR.
+                        </div>
                     </div>
                 </div>
-                <span class="badge" style="background:#D1FAE5; color:#059669; font-size:12px; padding:6px 12px; border-radius:99px; font-weight:700;">
-                    <i class="bi bi-check-circle-fill me-1"></i> Terhubung
-                </span>
+
+                {{-- 2. C3MR --}}
+                <div class="col-12">
+                    <div class="p-3 rounded border" style="background: #FAFAFA;">
+                        <label class="form-label d-flex align-items-center justify-content-between" for="c3mrUrlInput">
+                            <span style="font-weight: 700; color: var(--ink-900);">
+                                <i class="bi bi-2-circle-fill text-danger me-1"></i> Google Spreadsheet C3MR (Master DATA ALL, Caring & Performansi)
+                            </span>
+                            @if(!empty($c3mrSheetId))
+                                <span class="badge bg-light text-muted" style="font-size: 11px;">
+                                    Sheet ID: {{ substr($c3mrSheetId, 0, 14) }}...
+                                </span>
+                            @endif
+                        </label>
+                        <div class="input-group">
+                            <input id="c3mrUrlInput" type="url" name="c3mr_url" value="{{ old('c3mr_url', $activeC3mrUrl) }}" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/.../edit" required>
+                            <a href="{{ $activeC3mrUrl }}" target="_blank" class="btn btn-outline-secondary" title="Buka di tab baru">
+                                <i class="bi bi-box-arrow-up-right"></i>
+                            </a>
+                        </div>
+                        <div class="form-text" style="font-size: 11.5px; color: var(--ink-500);">
+                            Master Customer DATA ALL (~27.000 records), Report PRQ, VISEEPRO, HASIL CARING, dan PERFORMANSI DETAIL.
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <form method="POST" action="{{ url('/settings') }}">
-                @csrf
-
-                <div class="mb-3">
-                    <label class="form-label" style="font-size:13px; font-weight:700; color:var(--ink-900);">
-                        Google Spreadsheet URL
-                    </label>
-                    <div class="input-group">
-                        <span class="input-group-text" style="background:var(--secondary); border-color:var(--border); color:var(--ink-500);">
-                            <i class="bi bi-link-45deg fs-5"></i>
-                        </span>
-                        <input 
-                            type="url" 
-                            name="c3mr_url" 
-                            class="form-control @error('c3mr_url') is-invalid @enderror" 
-                            placeholder="https://docs.google.com/spreadsheets/d/..." 
-                            value="{{ old('c3mr_url', $activeUrl) }}"
-                            required
-                            style="font-size:13.5px; border-color:var(--border);"
-                        >
-                    </div>
-                    @error('c3mr_url')
-                        <div class="invalid-feedback d-block mt-1">{{ $message }}</div>
-                    @enderror
-                    <div style="font-size:12px; color:var(--ink-400); margin-top:6px; line-height:1.4;">
-                        <i class="bi bi-info-circle"></i> Masukkan tautan lengkap Google Spreadsheet yang berisi sheet data C3MR (Report PRQ, VISEEPRO, DATA ALL, Hasil Caring, Performansi).
-                    </div>
+            {{-- PENGATURAN TELEGRAM REMINDER --}}
+            <div class="mt-4 pt-3 border-top">
+                <div class="section-title mb-1">
+                    <i class="bi bi-telegram text-primary me-2"></i> Pengaturan Telegram Reminder AR
+                </div>
+                <div class="section-sub mb-3">
+                    Jadwal pengiriman otomatis ringkasan tagihan, visit & PTP ke personil AR
                 </div>
 
-                {{-- INFO STATUS & LAST SYNC --}}
-                <div class="p-3 mb-4" style="background:var(--secondary); border-radius:10px; border:1px solid var(--border);">
-                    <div class="row g-2 align-items-center" style="font-size:12.5px;">
-                        <div class="col-sm-6">
-                            <span style="color:var(--ink-500);">Spreadsheet ID Aktif:</span>
-                            <div style="font-family:monospace; font-weight:700; color:var(--ink-700); word-break:break-all;">
-                                {{ $sheetId }}
-                            </div>
-                        </div>
-                        <div class="col-sm-6">
-                            <span style="color:var(--ink-500);">Last Sync / Updated:</span>
-                            <div style="font-weight:700; color:var(--ink-700);">
-                                <i class="bi bi-clock-history" style="color:var(--primary);"></i> {{ $lastSyncFormatted }}
-                            </div>
+                <div class="row g-3 align-items-center">
+                    <div class="col-12 col-md-4">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" name="telegram_reminder_enabled" id="reminderSwitch" value="1" {{ old('telegram_reminder_enabled', $setting->telegram_reminder_enabled ?? true) ? 'checked' : '' }}>
+                            <label class="form-check-label" for="reminderSwitch" style="font-size: 13px; font-weight: 600;">
+                                Aktifkan Reminder Otomatis
+                            </label>
                         </div>
                     </div>
-                </div>
 
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 pt-2">
-                    <button type="submit" class="btn btn-primary-telkom px-4">
-                        <i class="bi bi-floppy-fill me-1"></i> Simpan Spreadsheet
+                    <div class="col-6 col-md-4">
+                        <label class="form-label" for="morningTimeInput" style="font-size: 12px;">Waktu Pagi (WIB)</label>
+                        <input id="morningTimeInput" type="time" name="telegram_morning_time" value="{{ old('telegram_morning_time', $setting->telegram_morning_time ?? '08:30') }}" class="form-control form-control-sm">
+                    </div>
+
+                    <div class="col-6 col-md-4">
+                        <label class="form-label" for="afternoonTimeInput" style="font-size: 12px;">Waktu Sore (WIB)</label>
+                        <input id="afternoonTimeInput" type="time" name="telegram_afternoon_time" value="{{ old('telegram_afternoon_time', $setting->telegram_afternoon_time ?? '15:30') }}" class="form-control form-control-sm">
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-4 d-flex justify-content-end gap-2">
+                <button type="submit" class="btn btn-primary-telkom">
+                    <i class="bi bi-save-fill"></i> Simpan Semua Pengaturan
+                </button>
+            </div>
+        </form>
+    </div>
+
+    {{-- KARTU STATUS KONEKSI BOT TELEGRAM & TEST ACTION --}}
+    <div class="card">
+        <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
+            <div>
+                <div class="section-title">
+                    <i class="bi bi-robot text-primary me-2"></i> Status & Uji Bot Telegram
+                </div>
+                <div class="section-sub">
+                    Token dikonfigurasi secara aman di file <code>.env</code> (tidak diekspos di frontend)
+                </div>
+            </div>
+
+            <div class="d-flex align-items-center gap-2">
+                <form action="{{ route('settings.test-telegram') }}" method="POST" class="m-0">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-outline-telkom">
+                        <i class="bi bi-activity"></i> Test Koneksi Bot
                     </button>
+                </form>
 
-                    <a href="{{ url('/c3mr/sync') }}" class="btn btn-outline-telkom" style="font-size:13px;">
-                        <i class="bi bi-arrow-repeat me-1"></i> Buka Sync Data C3MR
-                    </a>
+                <form action="{{ route('settings.send-reminders') }}" method="POST" class="m-0">
+                    @csrf
+                    <button type="submit" class="btn btn-sm btn-outline-primary" style="font-size: 12px; border-radius: 8px;">
+                        <i class="bi bi-send-fill"></i> Kirim Reminder Sekarang
+                    </button>
+                </form>
+            </div>
+        </div>
+
+        <div class="p-3 rounded" style="background: #F8FAFC; border: 1px solid var(--border);">
+            <div class="d-flex align-items-center gap-2">
+                @if($botStatus['success'])
+                    <span class="badge bg-success"><i class="bi bi-check-circle-fill"></i> Bot Aktif</span>
+                    <span style="font-size: 13px; color: var(--ink-700); font-weight: 600;">
+                        {{ $botStatus['message'] }}
+                    </span>
+                @else
+                    <span class="badge bg-danger"><i class="bi bi-x-circle-fill"></i> Perhatian</span>
+                    <span style="font-size: 13px; color: var(--danger);">
+                        {{ $botStatus['message'] }}
+                    </span>
+                @endif
+            </div>
+        </div>
+    </div>
+
+    {{-- RIWAYAT TERAKHIR SINKRONISASI --}}
+    <div class="card">
+        <div class="section-title mb-2">
+            <i class="bi bi-clock-history text-muted me-2"></i> Status Sinkronisasi Terakhir
+        </div>
+        <div class="row g-3">
+            <div class="col-12 col-md-6">
+                <div class="p-3 rounded" style="background: #F8FAFC; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11.5px; color: var(--ink-500);">Waktu Sinkronisasi Terakhir:</div>
+                    <div style="font-size: 14px; font-weight: 700; color: var(--ink-900); margin-top: 2px;">
+                        {{ $lastSyncFormatted }}
+                    </div>
                 </div>
-            </form>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="p-3 rounded" style="background: #F8FAFC; border: 1px solid #E2E8F0;">
+                    <div style="font-size: 11.5px; color: var(--ink-500);">Status Integritas Data:</div>
+                    <div style="font-size: 14px; font-weight: 700; margin-top: 2px;">
+                        @if($lastSyncStatus === 'success')
+                            <span class="text-success"><i class="bi bi-check-circle-fill"></i> Sinkronisasi Penuh Berhasil</span>
+                        @elseif($lastSyncStatus === 'warning')
+                            <span class="text-warning"><i class="bi bi-exclamation-triangle-fill"></i> Selesai dengan Catatan Data Quality</span>
+                        @elseif($lastSyncStatus === 'error')
+                            <span class="text-danger"><i class="bi bi-x-circle-fill"></i> Sinkronisasi Gagal</span>
+                        @else
+                            <span class="text-muted">Belum ada riwayat</span>
+                        @endif
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    {{-- SIDE INFO CARD --}}
-    <div class="col-lg-4 col-xl-5">
-        <div class="card h-100">
-            <div class="section-title mb-2" style="font-size:14px;">
-                <i class="bi bi-shield-check" style="color:var(--success);"></i> Petunjuk Izin Akses
-            </div>
-            <div style="font-size:12.5px; color:var(--ink-700); line-height:1.6;">
-                Agar server aplikasi dapat menyinkronkan data secara otomatis:
-                <ol class="ps-3 mt-2 mb-3" style="color:var(--ink-500);">
-                    <li>Buka file spreadsheet di Google Sheets.</li>
-                    <li>Klik tombol <strong>Bagikan (Share)</strong> di pojok kanan atas.</li>
-                    <li>Ubah <em>Akses Umum</em> menjadi <strong>"Siapa saja yang memiliki link"</strong> dengan peran <strong>Pelihat (Viewer)</strong>.</li>
-                    <li>Salin link spreadsheet lalu tempel pada input di halaman ini.</li>
-                </ol>
-            </div>
-
-            <div class="p-3 mt-auto" style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; font-size:12px; color:#1E40AF; line-height:1.5;">
-                <i class="bi bi-lightbulb-fill text-primary"></i> <strong>Satu Pintu Sinkronisasi:</strong> Semua dataset (Report PRQ, VISEEPRO, DATA ALL, Hasil Caring, Performansi Witel) kini bersumber dari satu spreadsheet ini dan diperbarui serentak via menu <strong>Sync Data C3MR</strong>.
-            </div>
-        </div>
-    </div>
 </div>
-
 @endsection

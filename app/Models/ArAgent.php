@@ -12,9 +12,18 @@ class ArAgent extends Model
         'is_active',
     ];
 
+    protected $casts = [
+        'is_active' => 'boolean',
+    ];
+
     public function visits()
     {
         return $this->hasMany(Visit::class);
+    }
+
+    public function assignedCustomers()
+    {
+        return $this->hasMany(Customer::class, 'assigned_ar_agent_id');
     }
 
     public function followUpRecommendations()
@@ -30,5 +39,10 @@ class ArAgent extends Model
     public function caringLogs()
     {
         return $this->hasMany(CaringLog::class);
+    }
+
+    public function users()
+    {
+        return $this->hasMany(User::class);
     }
 }

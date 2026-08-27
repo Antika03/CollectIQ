@@ -13,15 +13,22 @@ use Illuminate\Support\Facades\Log;
 class C3mrCaringService
 {
     /**
-     * Parse tanggal dari berbagai format spreadsheet (d/m/Y, j/n/Y, Y-m-d, d-m-Y)
+     * Parse tanggal dari berbagai format spreadsheet (d/m/Y, j/n/Y, Y-m-d, d-m-Y, Excel serial)
      */
-    public static function parseDate(?string $rawDate): ?Carbon
+    public static function parseDate($rawDate): ?Carbon
     {
-        if (empty($rawDate) || trim($rawDate) === '' || str_contains($rawDate, '1899') || str_contains($rawDate, '#')) {
+        if (empty($rawDate) || trim((string)$rawDate) === '' || str_contains((string)$rawDate, '1899') || str_contains((string)$rawDate, '#')) {
             return null;
         }
 
-        $rawDate = trim($rawDate);
+        $rawStr = trim((string)$rawDate);
+
+        // Jika Excel serial date
+        if (is_numeric($rawStr) && (float)$rawStr > 40000 && (float)$rawStr < 60000) {
+            $days = (float)$rawStr;
+            $base = Carbon::create(1899, 12, 30, 0, 0, 0);
+            return $base->addDays((int)$days);
+        }
 
         $formats = [
             'd/m/Y', 'j/n/Y', 'd/n/Y', 'j/m/Y',
@@ -31,14 +38,14 @@ class C3mrCaringService
         ];
         foreach ($formats as $fmt) {
             try {
-                return Carbon::createFromFormat($fmt, $rawDate)->startOfDay();
+                return Carbon::createFromFormat($fmt, $rawStr)->startOfDay();
             } catch (\Throwable $e) {
                 // coba format berikutnya
             }
         }
 
         try {
-            return Carbon::parse(str_replace('/', '-', $rawDate))->startOfDay();
+            return Carbon::parse(str_replace('/', '-', $rawStr))->startOfDay();
         } catch (\Throwable $e) {
             return null;
         }
@@ -86,7 +93,7 @@ class C3mrCaringService
 
         DB::beginTransaction();
         try {
-            // Pre-load all AR Agents for fast in-memory lookup
+            // Pre-load AR Agent map
             $agentMap = [];
             foreach (ArAgent::all() as $ag) {
                 $agentMap[strtoupper($ag->name)] = $ag;
@@ -103,42 +110,47 @@ class C3mrCaringService
 
                 $rawTgl = trim((string)($row[$tglCaringIdx] ?? ''));
                 $tglCaring = self::parseDate($rawTgl);
-                $voc = !empty($row[$vocIdx]) ? trim((string)$row[$vocIdx]) : null;
+                $rawVoc = !empty($row[$vocIdx]) ? trim((string)$row[$vocIdx]) : null;
                 $statusCaringRaw = !empty($row[$statusCaringIdx]) ? trim((string)$row[$statusCaringIdx]) : null;
                 $petugas = !empty($row[$petugasIdx]) ? trim((string)$row[$petugasIdx]) : null;
                 $agentNameRaw = !empty($row[$collAgentIdx]) ? trim((string)$row[$collAgentIdx]) : null;
 
-                // Hanya proses baris yang memang memiliki data / aktivitas caring
-                if (!$tglCaring && empty($voc) && empty($statusCaringRaw) && empty($petugas)) {
+                // Hanya proses baris yang memang memiliki aktivitas caring / data
+                if (!$tglCaring && empty($rawVoc) && empty($statusCaringRaw) && empty($petugas)) {
                     continue;
                 }
 
                 $tglCaring = $tglCaring ?: Carbon::create(2026, 8, 1)->startOfDay();
-                $statusCaring = !empty($statusCaringRaw) ? strtoupper($statusCaringRaw) : 'UNCONTACTED';
-                $statusBayar  = !empty($row[$statusBayarIdx]) ? strtoupper(trim((string)$row[$statusBayarIdx])) : 'UNPAID';
+                $statusCaring = DataNormalizerService::normalizeCaringStatus($statusCaringRaw);
+                $statusBayar  = DataNormalizerService::normalizePaymentStatus($row[$statusBayarIdx] ?? null);
+                $voc          = DataNormalizerService::normalizeVoc($rawVoc);
+                $billCat      = DataNormalizerService::normalizeBillCategory($row[$billCatIdx] ?? null);
                 $petugasNama  = $petugas ?: ($agentNameRaw ?: 'OBC PRITI');
                 $keterangan   = !empty($row[$ketIdx]) ? trim((string)$row[$ketIdx]) : null;
 
-                // Cari atau buat AR Agent dari in-memory cache
+                // Cari AR Agent jika ada personil valid (bukan payment channel)
                 $arAgent = null;
-                if ($agentNameRaw) {
-                    $canonicalName = ArAgentService::getCanonicalName($agentNameRaw);
-                    $cacheKey = strtoupper($canonicalName);
-                    if (isset($agentMap[$cacheKey])) {
-                        $arAgent = $agentMap[$cacheKey];
-                    } else {
-                        $arAgent = ArAgent::firstOrCreate(['name' => $canonicalName], ['is_active' => true]);
-                        $agentMap[$cacheKey] = $arAgent;
+                $targetArName = $agentNameRaw ?: $petugas;
+                if ($targetArName) {
+                    $canonicalName = DataNormalizerService::normalizeArName($targetArName);
+                    if ($canonicalName) {
+                        $cacheKey = strtoupper($canonicalName);
+                        if (isset($agentMap[$cacheKey])) {
+                            $arAgent = $agentMap[$cacheKey];
+                        } else {
+                            $arAgent = ArAgent::create(['name' => $canonicalName, 'is_active' => true]);
+                            $agentMap[$cacheKey] = $arAgent;
+                        }
                     }
                 }
 
                 $isPtp = false;
-                if ($voc && (str_contains(strtolower($voc), 'janji') || str_contains(strtolower($voc), 'ptp'))) {
+                if ($rawVoc && (str_contains(strtolower($rawVoc), 'janji') || str_contains(strtolower($rawVoc), 'ptp'))) {
                     $isPtp = true;
                 }
 
                 $jmlBayar = CustomerSyncService::cleanNumeric($row[$jmlBayarIdx] ?? null);
-                $noHp = CustomerSyncService::cleanPhoneNumber($row[$noHpIdx] ?? null);
+                $noHp = DataNormalizerService::normalizePhone($row[$noHpIdx] ?? null);
 
                 $caringLog = CaringLog::where('nomor_internet', $snd)
                     ->whereDate('tanggal_caring', $tglCaring->format('Y-m-d'))
@@ -158,14 +170,14 @@ class C3mrCaringService
                     'nama_pelanggan'  => trim((string)($row[$namaIdx] ?? 'Pelanggan ' . $snd)),
                     'no_hp'           => $noHp,
                     'petugas_caring'  => $petugasNama,
-                    'status_caring'   => $statusCaring ?: 'UNCONTACTED',
-                    'voc'             => $voc ?: 'General Caring',
+                    'status_caring'   => $statusCaring,
+                    'voc'             => $voc,
                     'keterangan'      => $keterangan,
                     'frekuensi'       => trim((string)($row[$frekIdx] ?? '1X')),
                     'is_ptp'          => $isPtp,
-                    'status_bayar'    => str_contains($statusBayar, 'PAID') && !str_contains($statusBayar, 'UN') ? 'PAID' : 'UNPAID',
+                    'status_bayar'    => $statusBayar,
                     'jumlah_bayar'    => $jmlBayar,
-                    'bill_category'   => trim((string)($row[$billCatIdx] ?? 'Eksisting')),
+                    'bill_category'   => $billCat,
                     'umur_customer'   => trim((string)($row[$umurIdx] ?? '-')),
                 ]);
 
@@ -178,7 +190,7 @@ class C3mrCaringService
                 }
             }
 
-            // Link customer_id ke caring logs yang belum ter-link
+            // Link customer_id ke caring logs
             DB::statement("UPDATE caring_logs SET customer_id = (SELECT id FROM customers WHERE customers.nomor_internet = caring_logs.nomor_internet LIMIT 1) WHERE customer_id IS NULL");
 
             DB::commit();
@@ -226,7 +238,7 @@ class C3mrCaringService
                 $row = str_getcsv($line);
                 if (empty($row[1])) continue;
 
-                $witelName = strtoupper(trim((string)$row[1]));
+                $witelName = DataNormalizerService::normalizeWitel(trim((string)$row[1]));
                 if (in_array($witelName, $targetWitels)) {
                     $billing   = CustomerSyncService::cleanNumeric($row[2] ?? null);
                     $cashColl  = CustomerSyncService::cleanNumeric($row[3] ?? null);

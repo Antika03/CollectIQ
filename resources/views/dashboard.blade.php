@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Executive Command Center')
-@section('subtitle', 'Monitoring performansi collection, pemulihan piutang, dan mitigasi risiko churn pelanggan Telkom')
+@section('subtitle', 'Monitoring performansi collection, pemulihan piutang, dan indikasi risiko churn pelanggan Telkom')
 
 @section('content')
 
@@ -10,9 +10,9 @@
     <div class="col-6 col-lg-3">
         <div class="card kpi-card h-100">
             <div>
-                <div class="kpi-label">Total Customer</div>
-                <div class="kpi-value">{{ number_format($totalCustomers) }}</div>
-                <div class="kpi-sub">Master Data C3MR PRITI</div>
+                <div class="kpi-label">Total Master Customer</div>
+                <div class="kpi-value">{{ number_format($totalCustomers, 0, ',', '.') }}</div>
+                <div class="kpi-sub">Master Data C3MR DATA ALL</div>
             </div>
             <div class="kpi-icon" style="background:var(--primary-soft); color:var(--primary);">
                 <i class="bi bi-people-fill"></i>
@@ -23,8 +23,8 @@
         <div class="card kpi-card h-100">
             <div>
                 <div class="kpi-label">Total Piutang (Outstanding)</div>
-                <div class="kpi-value" style="font-size:22px; color:var(--danger); white-space:nowrap;">Rp {{ number_format($totalPiutang, 0, ',', '.') }}</div>
-                <div class="kpi-sub">Saldo tertahan di pelanggan</div>
+                <div class="kpi-value rupiah-val" style="font-size:20px; color:var(--danger); white-space:nowrap;">Rp {{ number_format($totalPiutang, 0, ',', '.') }}</div>
+                <div class="kpi-sub">{{ number_format($totalOutstanding, 0, ',', '.') }} pelanggan menunggak</div>
             </div>
             <div class="kpi-icon" style="background:var(--danger-soft); color:var(--danger);">
                 <i class="bi bi-wallet2"></i>
@@ -34,12 +34,12 @@
     <div class="col-6 col-lg-3">
         <div class="card kpi-card h-100">
             <div>
-                <div class="kpi-label">Total Kunjungan Visit</div>
-                <div class="kpi-value">{{ number_format($totalVisits) }}</div>
-                <div class="kpi-sub">Hari ini: <strong>+{{ $todayVisits }}</strong> kunjungan</div>
+                <div class="kpi-label">Pelanggan PRANPC</div>
+                <div class="kpi-value" style="color:#D97706;">{{ number_format($pranpcCount, 0, ',', '.') }}</div>
+                <div class="kpi-sub rupiah-val" style="font-size:11px; color:#D97706;">Rp {{ number_format($pranpcPiutang, 0, ',', '.') }} saldo</div>
             </div>
-            <div class="kpi-icon" style="background:#EFF6FF; color:#2563EB;">
-                <i class="bi bi-geo-alt-fill"></i>
+            <div class="kpi-icon" style="background:#FEF3C7; color:#D97706;">
+                <i class="bi bi-tag-fill"></i>
             </div>
         </div>
     </div>
@@ -47,7 +47,7 @@
         <div class="card kpi-card h-100">
             <div>
                 <div class="kpi-label">Janji Bayar (PTP)</div>
-                <div class="kpi-value">{{ number_format($totalPtp) }}</div>
+                <div class="kpi-value">{{ number_format($totalPtp, 0, ',', '.') }}</div>
                 <div class="kpi-sub">Hari ini: <strong>+{{ $todayPTP }}</strong> PTP</div>
             </div>
             <div class="kpi-icon" style="background:var(--warning-soft); color:var(--warning);">
@@ -57,7 +57,7 @@
     </div>
 </div>
 
-{{-- 2. ACTION REQUIRED — CHURN RISK MATRIX --}}
+{{-- 2. ACTION REQUIRED — INDIKASI RISIKO CHURN MATRIX --}}
 <div class="card mb-4">
     <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
         <div>
@@ -65,10 +65,10 @@
                 <i class="bi bi-lightning-charge-fill" style="color:var(--primary); margin-right:6px;"></i>
                 Action Required — Prioritas Tindakan Collection &amp; Retensi
             </div>
-            <div class="section-sub">Klasifikasi penanganan pelanggan berdasarkan Early Warning Churn Risk Indicator</div>
+            <div class="section-sub">Klasifikasi penanganan pelanggan berdasarkan Indikasi Risiko Churn</div>
         </div>
-        <a href="{{ url('/c3mr/performance') }}" class="btn btn-outline-telkom btn-sm">
-            Lihat Analisis Detail <i class="bi bi-arrow-right"></i>
+        <a href="{{ route('c3mr.performance') }}" class="btn btn-outline-telkom btn-sm">
+            Lihat Analisis Witel <i class="bi bi-arrow-right"></i>
         </a>
     </div>
 
@@ -76,19 +76,19 @@
         <div class="col-6 col-lg-3">
             <div class="p-3" style="background:var(--danger-soft); border:1px solid rgba(220,38,38,0.2); border-radius:12px;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <span style="font-size:11px; font-weight:800; color:var(--danger);">🔴 CRITICAL ACTION</span>
-                    <span style="font-size:18px; font-weight:800; color:var(--danger);">{{ $criticalCount }}</span>
+                    <span style="font-size:11px; font-weight:800; color:var(--danger);">🔴 CRITICAL RISK</span>
+                    <span style="font-size:18px; font-weight:800; color:var(--danger);">{{ number_format($criticalCount, 0, ',', '.') }}</span>
                 </div>
                 <div style="font-size:11.5px; color:var(--ink-700); margin-top:6px; line-height:1.4;">
-                    Permintaan cabut / tunggakan kritis. <strong>Intervensi winback segera.</strong>
+                    Permintaan cabut / saldo kritis. <strong>Intervensi winback segera.</strong>
                 </div>
             </div>
         </div>
         <div class="col-6 col-lg-3">
             <div class="p-3" style="background:var(--warning-soft); border:1px solid rgba(217,119,6,0.2); border-radius:12px;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <span style="font-size:11px; font-weight:800; color:var(--warning);">🟠 HIGH PRIORITY</span>
-                    <span style="font-size:18px; font-weight:800; color:var(--warning);">{{ $highCount }}</span>
+                    <span style="font-size:11px; font-weight:800; color:var(--warning);">🟠 HIGH RISK</span>
+                    <span style="font-size:18px; font-weight:800; color:var(--warning);">{{ number_format($highCount, 0, ',', '.') }}</span>
                 </div>
                 <div style="font-size:11.5px; color:var(--ink-700); margin-top:6px; line-height:1.4;">
                     Broken PTP / saldo tinggi. <strong>Prioritas kunjungan visit AR.</strong>
@@ -98,11 +98,11 @@
         <div class="col-6 col-lg-3">
             <div class="p-3" style="background:#FEFCE8; border:1px solid rgba(202,138,4,0.2); border-radius:12px;">
                 <div class="d-flex justify-content-between align-items-center">
-                    <span style="font-size:11px; font-weight:800; color:#A16207;">🟡 MEDIUM PRIORITY</span>
-                    <span style="font-size:18px; font-weight:800; color:#A16207;">{{ $mediumCount }}</span>
+                    <span style="font-size:11px; font-weight:800; color:#A16207;">🟡 MEDIUM RISK</span>
+                    <span style="font-size:18px; font-weight:800; color:#A16207;">{{ number_format($mediumCount, 0, ',', '.') }}</span>
                 </div>
                 <div style="font-size:11.5px; color:var(--ink-700); margin-top:6px; line-height:1.4;">
-                    Uncontacted / RNA. <strong>Caring ulang via kanal alternatif.</strong>
+                    Uncontacted / RNA. <strong>Caring ulang via WhatsApp/telepon.</strong>
                 </div>
             </div>
         </div>
@@ -110,10 +110,10 @@
             <div class="p-3" style="background:var(--success-soft); border:1px solid rgba(22,163,74,0.2); border-radius:12px;">
                 <div class="d-flex justify-content-between align-items-center">
                     <span style="font-size:11px; font-weight:800; color:var(--success);">🟢 LOW / ROUTINE</span>
-                    <span style="font-size:18px; font-weight:800; color:var(--success);">{{ $lowCount }}</span>
+                    <span style="font-size:18px; font-weight:800; color:var(--success);">{{ number_format($lowCount, 0, ',', '.') }}</span>
                 </div>
                 <div style="font-size:11.5px; color:var(--ink-700); margin-top:6px; line-height:1.4;">
-                    Pelanggan lancar. <strong>Pelayanan reguler &amp; monitoring.</strong>
+                    Pelanggan lancar. <strong>Monitoring reguler.</strong>
                 </div>
             </div>
         </div>
@@ -137,10 +137,10 @@
         <div class="card h-100">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <div>
-                    <div class="section-title"><i class="bi bi-award-fill" style="color:var(--warning); margin-right:6px;"></i> Top AR Agent</div>
+                    <div class="section-title"><i class="bi bi-award-fill" style="color:var(--warning); margin-right:6px;"></i> Top Master AR Agent</div>
                     <div class="section-sub">Produktivitas kunjungan visit</div>
                 </div>
-                <a href="{{ url('/ar-agents') }}" style="font-size:12px; color:var(--primary); font-weight:600; text-decoration:none;">Semua</a>
+                <a href="{{ route('ar-agents.index') }}" style="font-size:12px; color:var(--primary); font-weight:600; text-decoration:none;">Semua</a>
             </div>
 
             <div class="d-flex flex-column gap-3">
@@ -148,8 +148,8 @@
                     <div>
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div class="d-flex align-items-center gap-2">
-                                <span class="rank-pill rank-{{ $idx + 1 <= 3 ? ($idx + 1) : 'other' }}" style="width:22px; height:22px; font-size:11px;">
-                                    {{ $idx + 1 }}
+                                <span class="badge {{ $idx == 0 ? 'bg-warning text-dark' : ($idx == 1 ? 'bg-secondary text-white' : 'bg-light text-dark') }}" style="font-size:11px; border-radius:6px; padding:2px 6px;">
+                                    #{{ $idx + 1 }}
                                 </span>
                                 <span style="font-size:13px; font-weight:700; color:var(--ink-900);">{{ $agent->name }}</span>
                             </div>
@@ -176,7 +176,7 @@
                 <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">
                     <i class="bi bi-exclamation-circle-fill" style="color:var(--danger); margin-right:6px;"></i> Top Saldo Piutang Menunggak
                 </div>
-                <a href="{{ url('/piutang') }}" style="font-size:12px; color:var(--primary); text-decoration:none; font-weight:600;">Lihat Semua <i class="bi bi-arrow-right"></i></a>
+                <a href="{{ route('piutang.index') }}" style="font-size:12px; color:var(--primary); text-decoration:none; font-weight:600;">Lihat Semua <i class="bi bi-arrow-right"></i></a>
             </div>
             <div class="table-responsive">
                 <table class="table-modern mb-0">
@@ -200,7 +200,7 @@
                                     Rp {{ number_format($c->saldo_piutang, 0, ',', '.') }}
                                 </td>
                                 <td style="text-align:center;">
-                                    <a href="{{ url('/customers/' . $c->id) }}" class="btn btn-sm btn-outline-telkom" style="font-size:11.5px; padding:3px 8px; white-space:nowrap;" title="Lihat Detail Pelanggan" data-bs-toggle="tooltip">
+                                    <a href="{{ route('customer.show', $c) }}" class="btn btn-sm btn-outline-telkom" style="font-size:11.5px; padding:3px 8px; white-space:nowrap;" title="Lihat Detail Pelanggan" data-bs-toggle="tooltip">
                                         <i class="bi bi-eye"></i> Detail
                                     </a>
                                 </td>
@@ -219,16 +219,18 @@
                 <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">
                     <i class="bi bi-camera-fill" style="color:var(--primary); margin-right:6px;"></i> Kunjungan Visit Lapangan Terbaru
                 </div>
-                <a href="{{ url('/visits') }}" style="font-size:12px; color:var(--primary); text-decoration:none; font-weight:600;">Lihat Semua <i class="bi bi-arrow-right"></i></a>
+                <a href="{{ route('visits.index') }}" style="font-size:12px; color:var(--primary); text-decoration:none; font-weight:600;">Lihat Semua <i class="bi bi-arrow-right"></i></a>
             </div>
             <div class="p-3">
                 @foreach($latestVisits as $v)
                     <div class="d-flex align-items-center gap-3 py-2" style="border-bottom:1px solid var(--border);">
                         @if($v->foto_url)
-                            <img src="{{ route('visit.photo', ['visit' => $v->id]) }}"
-                                 style="width:42px; height:42px; object-fit:cover; border-radius:8px; border:1px solid var(--border);"
-                                 onerror="this.src='{{ asset('images/photo-placeholder.svg') }}'"
-                                 alt="Foto visit">
+                            <a href="{{ $v->foto_url }}" target="_blank">
+                                <img src="{{ $v->foto_url }}"
+                                     style="width:42px; height:42px; object-fit:cover; border-radius:8px; border:1px solid var(--border);"
+                                     onerror="this.src='{{ route('visit.photo', $v) }}'"
+                                     alt="Foto visit">
+                            </a>
                         @else
                             <div style="width:42px; height:42px; border-radius:8px; background:var(--secondary); display:flex; align-items:center; justify-content:center; color:var(--ink-400); flex-shrink:0;">
                                 <i class="bi bi-image"></i>

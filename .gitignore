@@ -19,6 +19,11 @@
 /public/hot
 /public/storage
 /storage/*.key
+/storage/app/*.xlsx
+/storage/app/*.csv
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
 /storage/pail
 /vendor
 _ide_helper.php

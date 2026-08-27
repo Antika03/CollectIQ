@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="csrf-token" content="{{ csrf_token() }}">
-<title>@yield('title', 'Dashboard') — PTP Collection Intelligence</title>
+<title>@yield('title', 'Dashboard') — CollectIQ Telkom Intelligence</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
@@ -45,7 +45,7 @@ body{
     overflow-x: hidden;
 }
 
-/* ===== TOP PROGRESS BAR (LIGHTWEIGHT IMMEDIATE FEEDBACK) ===== */
+/* TOP PROGRESS BAR */
 #topProgressBar{
     position: fixed;
     top: 0; left: 0;
@@ -66,7 +66,7 @@ body{
     opacity: 0;
 }
 
-/* ===== SIDEBAR (CLEAN ENTERPRISE LIGHT) ===== */
+/* SIDEBAR */
 .sidebar{
     width: var(--sidebar-w);
     height: 100vh;
@@ -154,7 +154,7 @@ body{
     background: #FAFAFA;
 }
 
-/* ===== MAIN CONTENT WRAPPER ===== */
+/* MAIN CONTENT */
 .main{
     margin-left: var(--sidebar-w);
     min-height: 100vh;
@@ -162,7 +162,7 @@ body{
     flex-direction: column;
 }
 
-/* ===== TOPBAR ===== */
+/* TOPBAR */
 .topbar{
     height: 64px;
     background: rgba(255,255,255,0.96);
@@ -181,7 +181,7 @@ body{
 .page-title{ font-size: 17px; font-weight: 800; color: var(--ink-900); }
 .page-subtitle{ font-size: 12px; color: var(--ink-500); margin-top: 1px; }
 
-.topbar-right{ display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.topbar-right{ display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
 .topbar-badge{
     display: flex; align-items: center; gap: 7px;
     background: #FFFFFF;
@@ -194,6 +194,26 @@ body{
     white-space: nowrap;
 }
 .topbar-badge i{ color: var(--primary); }
+
+.user-profile-badge{
+    display: flex; align-items: center; gap: 9px;
+    background: #FFFFFF;
+    border: 1px solid var(--border);
+    padding: 5px 12px 5px 6px;
+    border-radius: 30px;
+    font-size: 12px;
+    color: var(--ink-900);
+    font-weight: 600;
+}
+.role-pill{
+    font-size: 10px;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 99px;
+    text-transform: uppercase;
+}
+.role-admin{ background: #FEE2E2; color: #B91C1C; }
+.role-ar{ background: #E0F2FE; color: #0369A1; }
 
 .topbar-search{
     flex: 1;
@@ -232,7 +252,7 @@ body{
 
 .content{ padding: 24px 28px 48px; flex: 1; }
 
-/* ===== CARDS & UI COMPONENTS ===== */
+/* CARDS & UI COMPONENTS */
 .card{
     background: var(--surface);
     border: 1px solid var(--border);
@@ -271,7 +291,6 @@ body{
 .section-title{ font-size: 15px; font-weight: 700; color: var(--ink-900); }
 .section-sub{ font-size: 12px; color: var(--ink-500); margin-top: 2px; }
 
-/* Currency formatting utility */
 .rupiah-val{
     white-space: nowrap;
     text-align: right;
@@ -289,6 +308,18 @@ body{
     padding: 4px 10px;
     border-radius: 99px;
     white-space: nowrap;
+}
+.badge-pranpc{
+    background: #FEF3C7;
+    color: #92400E;
+    border: 1px solid rgba(217, 119, 6, 0.25);
+    font-weight: 800;
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
 }
 .badge-ptp{ background: var(--warning-soft); color: var(--warning); }
 .badge-contacted{ background: var(--success-soft); color: var(--success); }
@@ -308,19 +339,6 @@ body{
     flex-shrink: 0;
 }
 
-.rank-pill{
-    width: 26px; height: 26px;
-    border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 12px; font-weight: 800;
-    flex-shrink: 0;
-}
-.rank-1{ background: #FEF3C7; color: #92400E; }
-.rank-2{ background: #E2E8F0; color: #334155; }
-.rank-3{ background: #FFEDD5; color: #9A3412; }
-.rank-other{ background: var(--secondary); color: var(--ink-500); }
-
-/* Table Modern */
 .table-modern{ width: 100%; border-collapse: separate; border-spacing: 0; }
 .table-modern thead th{
     font-size: 11px;
@@ -346,7 +364,6 @@ body{
 .table-modern tbody tr:last-child td{ border-bottom: none; }
 .table-modern tbody tr:hover{ background: #FAFBFD; }
 
-/* Filter Bar */
 .filter-bar{
     background: var(--surface);
     border: 1px solid var(--border);
@@ -368,7 +385,6 @@ body{
     color: var(--ink-900);
 }
 
-/* Buttons */
 .btn-primary-telkom{
     background: linear-gradient(135deg, var(--primary-light), var(--primary-dark));
     border: none; color: #fff !important;
@@ -418,10 +434,6 @@ body{
     color: var(--ink-400); font-size: 16px;
 }
 
-.empty-state{ text-align: center; padding: 40px 20px; color: var(--ink-400); }
-.empty-state i{ font-size: 34px; margin-bottom: 8px; display: block; }
-
-/* Mobile Menu */
 .menu-toggle{
     display: none;
     align-items: center; justify-content: center;
@@ -442,7 +454,6 @@ body{
 }
 .sidebar-overlay.active{ display: block; }
 
-/* Responsive Layout */
 @media (max-width: 991.98px){
     .sidebar{
         transform: translateX(-100%);
@@ -469,28 +480,40 @@ body{
 </head>
 <body>
 
-{{-- TOPBAR PROGRESS LOADER (IMMEDIATE FEEDBACK) --}}
 <div id="topProgressBar"></div>
 
 {{-- SIDEBAR --}}
 <div class="sidebar" id="sidebarEl">
     <div class="sidebar-header">
         <a href="{{ url('/') }}" style="display:block; text-decoration:none;">
-            <img src="{{ asset('images/telkom-logo.png') }}" alt="Telkom Indonesia" style="height:48px; width:auto; object-fit:contain; display:block; margin:0 auto;">
+            <img src="{{ asset('images/telkom-logo.png') }}" alt="Telkom Indonesia" style="height:46px; width:auto; object-fit:contain; display:block; margin:0 auto;" onerror="this.src=''; this.alt='CollectIQ Telkom';">
         </a>
     </div>
+
+    @php
+        $user = auth()->user();
+        $isAdmin = $user && $user->isAdmin();
+        $isAr = $user && $user->isAr();
+    @endphp
 
     {{-- MAIN GROUP --}}
     <div class="menu-section">
         <div class="sidebar-menu-label">Main</div>
         <div class="menu">
-            <a href="{{ url('/') }}" class="{{ request()->is('/') ? 'active' : '' }}">
-                <i class="bi bi-grid-1x2-fill"></i> Dashboard
+            @if($isAdmin)
+                <a href="{{ route('dashboard') }}" class="{{ request()->routeIs('dashboard') ? 'active' : '' }}">
+                    <i class="bi bi-grid-1x2-fill"></i> Executive Dashboard
+                </a>
+            @endif
+
+            <a href="{{ route('ar.dashboard') }}" class="{{ request()->routeIs('ar.dashboard') ? 'active' : '' }}">
+                <i class="bi bi-person-badge-fill"></i> AR Dashboard
             </a>
-            <a href="{{ url('/customers') }}" class="{{ request()->is('customers*') ? 'active' : '' }}">
+
+            <a href="{{ route('customers.index') }}" class="{{ request()->routeIs('customers*') || request()->routeIs('customer.show') ? 'active' : '' }}">
                 <i class="bi bi-people-fill"></i> Customers
             </a>
-            <a href="{{ url('/visits') }}" class="{{ request()->is('visits*') ? 'active' : '' }}">
+            <a href="{{ route('visits.index') }}" class="{{ request()->routeIs('visits*') || request()->routeIs('visit.*') ? 'active' : '' }}">
                 <i class="bi bi-geo-alt-fill"></i> Visits
             </a>
         </div>
@@ -500,13 +523,13 @@ body{
     <div class="menu-section">
         <div class="sidebar-menu-label">Collection & Piutang</div>
         <div class="menu">
-            <a href="{{ url('/ptp-monitoring') }}" class="{{ request()->is('ptp-monitoring*') ? 'active' : '' }}">
+            <a href="{{ route('ptp.monitoring') }}" class="{{ request()->routeIs('ptp.monitoring') ? 'active' : '' }}">
                 <i class="bi bi-cash-coin"></i> PTP Monitoring
             </a>
-            <a href="{{ url('/risk-score') }}" class="{{ request()->is('risk-score*') ? 'active' : '' }}">
-                <i class="bi bi-shield-exclamation"></i> Risk Score
+            <a href="{{ route('risk-score.index') }}" class="{{ request()->routeIs('risk-score*') ? 'active' : '' }}">
+                <i class="bi bi-shield-exclamation"></i> Indikasi Risiko Churn
             </a>
-            <a href="{{ url('/piutang') }}" class="{{ request()->is('piutang*') ? 'active' : '' }}">
+            <a href="{{ route('piutang.index') }}" class="{{ request()->routeIs('piutang*') ? 'active' : '' }}">
                 <i class="bi bi-wallet2"></i> Piutang Outstanding
             </a>
         </div>
@@ -516,37 +539,41 @@ body{
     <div class="menu-section">
         <div class="sidebar-menu-label">C3MR Intelligence</div>
         <div class="menu">
-            <a href="{{ url('/c3mr/hasil-caring') }}" class="{{ request()->is('c3mr/hasil-caring*') ? 'active' : '' }}">
+            <a href="{{ route('c3mr.caring') }}" class="{{ request()->routeIs('c3mr.caring*') ? 'active' : '' }}">
                 <i class="bi bi-telephone-fill"></i> Hasil Caring OBC
             </a>
-            <a href="{{ url('/c3mr/performance') }}" class="{{ request()->is('c3mr/performance*') ? 'active' : '' }}">
-                <i class="bi bi-graph-up-arrow"></i> Churn Risk & Witel
+            <a href="{{ route('c3mr.performance') }}" class="{{ request()->routeIs('c3mr.performance*') ? 'active' : '' }}">
+                <i class="bi bi-graph-up-arrow"></i> Performansi Witel
             </a>
-            <a href="{{ url('/c3mr/sync') }}" class="{{ request()->is('c3mr/sync*') ? 'active' : '' }}">
-                <i class="bi bi-arrow-repeat"></i> Sync Data C3MR
-            </a>
+            @if($isAdmin)
+                <a href="{{ route('c3mr.sync') }}" class="{{ request()->routeIs('c3mr.sync*') ? 'active' : '' }}">
+                    <i class="bi bi-arrow-repeat"></i> Sync Data PRITI + C3MR
+                </a>
+            @endif
         </div>
     </div>
 
-    {{-- AGENTS GROUP --}}
-    <div class="menu-section">
-        <div class="sidebar-menu-label">Agents</div>
-        <div class="menu">
-            <a href="{{ url('/ar-agents') }}" class="{{ request()->is('ar-agents*') ? 'active' : '' }}">
-                <i class="bi bi-person-badge-fill"></i> AR Agents
-            </a>
+    {{-- AGENTS GROUP (ADMIN ONLY) --}}
+    @if($isAdmin)
+        <div class="menu-section">
+            <div class="sidebar-menu-label">Agents Master</div>
+            <div class="menu">
+                <a href="{{ route('ar-agents.index') }}" class="{{ request()->routeIs('ar-agents*') ? 'active' : '' }}">
+                    <i class="bi bi-person-lines-fill"></i> AR Agents
+                </a>
+            </div>
         </div>
-    </div>
 
-    {{-- SYSTEM GROUP --}}
-    <div class="menu-section">
-        <div class="sidebar-menu-label">System</div>
-        <div class="menu">
-            <a href="{{ url('/settings') }}" class="{{ request()->is('settings*') ? 'active' : '' }}">
-                <i class="bi bi-gear-fill"></i> Settings
-            </a>
+        {{-- SYSTEM GROUP (ADMIN ONLY) --}}
+        <div class="menu-section">
+            <div class="sidebar-menu-label">System</div>
+            <div class="menu">
+                <a href="{{ route('settings.index') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">
+                    <i class="bi bi-gear-fill"></i> Settings & Telegram
+                </a>
+            </div>
         </div>
-    </div>
+    @endif
 
     <div class="sidebar-footer">
         <div style="font-weight:700; color:#1E293B; margin-bottom:2px; font-size:11.5px;">PT Telekomunikasi Indonesia</div>
@@ -570,16 +597,61 @@ body{
 
         {{-- GLOBAL SEARCH --}}
         <div class="topbar-search">
-            <form action="{{ url('/search') }}" method="GET">
+            <form action="{{ route('global.search') }}" method="GET">
                 <input id="topbar-search-input" type="text" name="q" value="{{ request('q') }}" class="topbar-search-input" placeholder="Cari pelanggan, no internet, AR Agent..." autocomplete="off">
                 <button type="submit" class="topbar-search-btn" aria-label="Cari"><i class="bi bi-search"></i></button>
             </form>
         </div>
 
         <div class="topbar-right">
-            <div class="topbar-badge">
+            <div class="topbar-badge d-none d-md-flex">
                 <i class="bi bi-calendar3"></i> {{ now()->translatedFormat('d F Y') }}
             </div>
+
+            @auth
+                <div class="dropdown">
+                    <button class="btn p-0 border-0 d-flex align-items-center gap-2" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                        <div class="user-profile-badge">
+                            <div class="avatar-circle" style="width: 26px; height: 26px; font-size: 11px;">
+                                {{ strtoupper(substr(auth()->user()->name, 0, 2)) }}
+                            </div>
+                            <span class="d-none d-sm-inline" style="max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                                {{ auth()->user()->name }}
+                            </span>
+                            <span class="role-pill {{ auth()->user()->isAdmin() ? 'role-admin' : 'role-ar' }}">
+                                {{ strtoupper(auth()->user()->role ?? 'AR') }}
+                            </span>
+                            <i class="bi bi-chevron-down" style="font-size: 10px; color: #94A3B8;"></i>
+                        </div>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm" style="border-radius: 12px; border-color: var(--border); font-size: 13px; min-width: 180px;">
+                        <li class="px-3 py-2 border-bottom">
+                            <div style="font-weight: 700; color: var(--ink-900);">{{ auth()->user()->name }}</div>
+                            <div style="font-size: 11px; color: var(--ink-500);">{{ auth()->user()->email }}</div>
+                        </li>
+                        @if(auth()->user()->isAdmin())
+                            <li>
+                                <a class="dropdown-item py-2" href="{{ route('settings.index') }}">
+                                    <i class="bi bi-gear me-2 text-muted"></i> Pengaturan
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item py-2" href="{{ route('c3mr.sync') }}">
+                                    <i class="bi bi-arrow-repeat me-2 text-muted"></i> Sync Data
+                                </a>
+                            </li>
+                        @endif
+                        <li>
+                            <form action="{{ route('logout') }}" method="POST" class="m-0">
+                                @csrf
+                                <button type="submit" class="dropdown-item py-2 text-danger">
+                                    <i class="bi bi-box-arrow-right me-2"></i> Keluar
+                                </button>
+                            </form>
+                        </li>
+                    </ul>
+                </div>
+            @endauth
         </div>
     </div>
 
@@ -602,7 +674,6 @@ body{
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
-// Sidebar Toggle (Mobile)
 function toggleSidebar(){
     document.getElementById('sidebarEl').classList.toggle('sidebar-open');
     document.getElementById('sidebarOverlay').classList.toggle('active');
@@ -612,7 +683,6 @@ function closeSidebar(){
     document.getElementById('sidebarOverlay').classList.remove('active');
 }
 
-// Immediate Navigation Progress Feedback (<100ms)
 const topBar = document.getElementById('topProgressBar');
 function startLoader(){
     if (topBar) {
@@ -627,15 +697,12 @@ function endLoader(){
     }
 }
 
-// Attach listener to internal links for instantaneous feedback
 document.addEventListener('DOMContentLoaded', function(){
-    // Tooltips initialization
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     tooltipTriggerList.forEach(function (el) {
         new bootstrap.Tooltip(el);
     });
 
-    // Immediate link navigation feedback
     document.querySelectorAll('a[href]').forEach(function(link){
         link.addEventListener('click', function(e){
             const href = link.getAttribute('href');
@@ -646,7 +713,6 @@ document.addEventListener('DOMContentLoaded', function(){
         });
     });
 
-    // Form submit feedback
     document.querySelectorAll('form').forEach(function(form){
         form.addEventListener('submit', function(){
             startLoader();

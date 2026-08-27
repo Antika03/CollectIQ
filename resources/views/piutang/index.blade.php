@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', 'Total Piutang & Outstanding Collection')
-@section('subtitle', 'Monitoring kondisi piutang, saldo tertahan, dan aging tunggakan pelanggan')
+@section('subtitle', 'Monitoring kondisi piutang, saldo tertahan, penandaan PRANPC dan aging tunggakan pelanggan')
 
 @section('content')
 
@@ -11,7 +11,7 @@
         <div class="card kpi-card h-100">
             <div>
                 <div class="kpi-label">Total Outstanding Piutang</div>
-                <div class="kpi-value" style="font-size:24px; color:var(--primary); white-space:nowrap;">Rp {{ number_format($totalPiutang, 0, ',', '.') }}</div>
+                <div class="kpi-value rupiah-val" style="font-size:22px; color:var(--primary); white-space:nowrap;">Rp {{ number_format($totalPiutang, 0, ',', '.') }}</div>
                 <div style="font-size:11px; color:var(--ink-400); margin-top:4px;">Saldo tertahan di pelanggan</div>
             </div>
             <div class="kpi-icon" style="background:var(--primary-soft); color:var(--primary);">
@@ -34,12 +34,12 @@
     <div class="col-6 col-lg-3">
         <div class="card kpi-card h-100">
             <div>
-                <div class="kpi-label">Rata-rata Piutang</div>
-                <div class="kpi-value" style="font-size:22px; white-space:nowrap;">Rp {{ number_format($avgPiutang, 0, ',', '.') }}</div>
-                <div style="font-size:11px; color:var(--ink-400); margin-top:4px;">Per pelanggan menunggak</div>
+                <div class="kpi-label">Piutang PRANPC</div>
+                <div class="kpi-value rupiah-val" style="font-size:20px; color:#D97706; white-space:nowrap;">Rp {{ number_format($pranpcPiutang, 0, ',', '.') }}</div>
+                <div style="font-size:11px; color:#D97706; margin-top:4px;">{{ number_format($pranpcCount, 0, ',', '.') }} pelanggan PRANPC</div>
             </div>
-            <div class="kpi-icon" style="background:#EFF6FF; color:#3B82F6;">
-                <i class="bi bi-calculator"></i>
+            <div class="kpi-icon" style="background:#FEF3C7; color:#D97706;">
+                <i class="bi bi-tag-fill"></i>
             </div>
         </div>
     </div>
@@ -47,7 +47,7 @@
         <div class="card kpi-card h-100">
             <div>
                 <div class="kpi-label">Piutang Terbesar (Top 1)</div>
-                <div class="kpi-value" style="font-size:22px; color:var(--warning); white-space:nowrap;">Rp {{ number_format($maxPiutang, 0, ',', '.') }}</div>
+                <div class="kpi-value rupiah-val" style="font-size:20px; color:var(--warning); white-space:nowrap;">Rp {{ number_format($maxPiutang, 0, ',', '.') }}</div>
                 <div style="font-size:11px; color:var(--warning); margin-top:4px;">Prioritas penagihan utama</div>
             </div>
             <div class="kpi-icon" style="background:var(--warning-soft); color:var(--warning);">
@@ -79,14 +79,22 @@
 
 {{-- FILTER & SEARCH BAR --}}
 <div class="filter-bar mb-3">
-    <form method="GET" action="{{ url('/piutang') }}" class="d-flex w-100 gap-2 flex-wrap align-items-end">
+    <form method="GET" action="{{ route('piutang.index') }}" class="d-flex w-100 gap-2 flex-wrap align-items-end">
         <div style="flex:2; min-width:200px;">
             <label class="form-label mb-1" style="font-size:11px; font-weight:700; color:var(--ink-500);">Pencarian</label>
             <input type="text" name="search" value="{{ request('search') }}" class="form-control form-control-sm"
                    placeholder="Cari nama, no internet, no HP, atau datel...">
         </div>
-        <div style="flex:1; min-width:140px;">
-            <label class="form-label mb-1" style="font-size:11px; font-weight:700; color:var(--ink-500);">Umur Customer / Aging</label>
+        <div style="flex:1; min-width:130px;">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:700; color:var(--ink-500);">Kategori PRANPC</label>
+            <select name="is_pranpc" class="form-select form-select-sm">
+                <option value="">Semua Kategori</option>
+                <option value="1" {{ request('is_pranpc') === '1' ? 'selected' : '' }}>PRANPC Saja</option>
+                <option value="0" {{ request('is_pranpc') === '0' ? 'selected' : '' }}>Non-PRANPC</option>
+            </select>
+        </div>
+        <div style="flex:1; min-width:130px;">
+            <label class="form-label mb-1" style="font-size:11px; font-weight:700; color:var(--ink-500);">Aging Tunggakan</label>
             <select name="umur_customer" class="form-select form-select-sm">
                 <option value="">Semua Aging</option>
                 @foreach($agingList as $ag)
@@ -94,7 +102,7 @@
                 @endforeach
             </select>
         </div>
-        <div style="flex:1; min-width:140px;">
+        <div style="flex:1; min-width:130px;">
             <label class="form-label mb-1" style="font-size:11px; font-weight:700; color:var(--ink-500);">Datel / Wilayah</label>
             <select name="datel" class="form-select form-select-sm">
                 <option value="">Semua Wilayah</option>
@@ -114,8 +122,8 @@
             <button type="submit" class="btn btn-primary-telkom" style="height:31px; font-size:12.5px; padding:4px 14px;">
                 <i class="bi bi-funnel"></i> Apply
             </button>
-            @if(request()->anyFilled(['search', 'umur_customer', 'datel', 'sort_by']))
-                <a href="{{ url('/piutang') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px; height:31px;">Reset</a>
+            @if(request()->anyFilled(['search', 'umur_customer', 'datel', 'sort_by', 'is_pranpc']))
+                <a href="{{ route('piutang.index') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px; height:31px;">Reset</a>
             @endif
             <a href="{{ route('piutang.export', request()->query()) }}" class="btn btn-sm" style="background:var(--success-soft); color:var(--success); border:1px solid rgba(22,163,74,0.3); font-weight:600; border-radius:8px; height:31px; display:inline-flex; align-items:center; gap:5px;">
                 <i class="bi bi-file-earmark-excel"></i> Export CSV
@@ -129,7 +137,7 @@
     <div style="padding:16px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <div>
             <div style="font-weight:700; font-size:14px; color:var(--ink-900);">Daftar Pelanggan Menunggak (Outstanding)</div>
-            <div style="font-size:11.5px; color:var(--ink-400);">{{ $customers->total() }} pelanggan ditemukan</div>
+            <div style="font-size:11.5px; color:var(--ink-400);">{{ number_format($customers->total(), 0, ',', '.') }} pelanggan ditemukan</div>
         </div>
     </div>
     <div class="table-responsive">
@@ -139,6 +147,8 @@
                     <th style="width:40px;">#</th>
                     <th>Pelanggan</th>
                     <th>Nomor Internet</th>
+                    <th>Status PRANPC</th>
+                    <th>AR Responsible</th>
                     <th>Nomor HP</th>
                     <th>Datel / STO</th>
                     <th>Umur Tunggakan</th>
@@ -158,7 +168,7 @@
                                     {{ strtoupper(substr($c->nama_pelanggan, 0, 2)) }}
                                 </div>
                                 <div>
-                                    <div style="font-weight:700; color:var(--ink-900); max-width:200px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                    <div style="font-weight:700; color:var(--ink-900); max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                                         {{ $c->nama_pelanggan }}
                                     </div>
                                     <div style="font-size:11px; color:var(--ink-400);">
@@ -172,13 +182,23 @@
                                 {{ $c->nomor_internet }}
                             </code>
                         </td>
+                        <td>
+                            @if($c->is_pranpc)
+                                <span class="badge-pranpc"><i class="bi bi-tag-fill"></i> PRANPC</span>
+                            @else
+                                <span class="badge bg-light text-muted" style="font-size:10px; border:1px solid #E2E8F0;">{{ $c->bill_category ?: 'Eksisting' }}</span>
+                            @endif
+                        </td>
+                        <td style="font-size:12px; color:var(--ink-700); font-weight:600;">
+                            {{ $c->assignedArAgent ? $c->assignedArAgent->name : '-' }}
+                        </td>
                         <td style="font-size:12px; color:var(--ink-700); white-space:nowrap;">
                             @if($c->wa_url)
                                 <a href="{{ $c->wa_url }}" target="_blank" class="text-success text-decoration-none fw-semibold" title="Kirim WhatsApp Otomatis" data-bs-toggle="tooltip">
                                     <i class="bi bi-whatsapp"></i> {{ $c->no_hp_terbaru }}
                                 </a>
                             @else
-                                {{ $c->no_hp_terbaru ?: '-' }}
+                                <span style="color:var(--ink-400);">{{ $c->no_hp_terbaru ?: '-' }}</span>
                             @endif
                         </td>
                         <td style="font-size:12px; color:var(--ink-700);">
@@ -193,16 +213,16 @@
                             Rp {{ number_format($c->saldo_piutang, 0, ',', '.') }}
                         </td>
                         <td style="text-align:center;">
-                            <a href="{{ url('/customers/' . $c->id) }}" class="btn btn-sm btn-outline-telkom"
+                            <a href="{{ route('customer.show', $c) }}" class="btn btn-sm btn-outline-telkom"
                                style="font-size:11.5px; padding:3px 8px; white-space:nowrap;"
-                               title="Lihat Detail Profil Pelanggan" data-bs-toggle="tooltip">
+                               title="Lihat Detail Profil Pelanggan 360" data-bs-toggle="tooltip">
                                 <i class="bi bi-eye"></i> Detail
                             </a>
                         </td>
                     </tr>
                 @empty
                     <tr>
-                        <td colspan="8">
+                        <td colspan="10">
                             <div class="empty-state">
                                 <i class="bi bi-check-circle"></i> Tidak ada data tunggakan piutang ditemukan.
                             </div>
@@ -222,7 +242,6 @@
 @push('scripts')
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Chart Aging
     const agingLabels = @json($agingBuckets->pluck('umur_customer'));
     const agingData   = @json($agingBuckets->pluck('total_saldo'));
     const ctxAging = document.getElementById('chartAging');
@@ -253,7 +272,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Chart Datel
     const datelLabels = @json($datelDistribution->pluck('datel'));
     const datelData   = @json($datelDistribution->pluck('total_saldo'));
     const ctxDatel = document.getElementById('chartDatel');

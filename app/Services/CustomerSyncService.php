@@ -3,51 +3,18 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\ArAgent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class CustomerSyncService
 {
     /**
-     * Membersihkan dan memvalidasi nomor HP (Mendukung multi-nomor dengan pemisah ;, /, ,, |, spasi)
+     * Membersihkan dan memvalidasi nomor HP via DataNormalizerService
      */
     public static function cleanPhoneNumber(?string $phone): ?string
     {
-        if (!$phone) {
-            return null;
-        }
-
-        // Pisahkan jika ada beberapa nomor dalam satu kolom (misal: 082120206900;081235717201)
-        $parts = preg_split('/[;,\|\/\n\r]+/', trim($phone));
-
-        foreach ($parts as $part) {
-            $part = trim($part);
-            if (empty($part) || $part === '-' || $part === '0') {
-                continue;
-            }
-
-            // Hapus karakter non-digit
-            $cleaned = preg_replace('/[^\d]/', '', $part);
-
-            // Normalisasi awalan nomor telepon Indonesia
-            if (str_starts_with($cleaned, '62') && strlen($cleaned) >= 10) {
-                $cleaned = '0' . substr($cleaned, 2);
-            } elseif (str_starts_with($cleaned, '8') && strlen($cleaned) >= 9) {
-                $cleaned = '0' . $cleaned;
-            }
-
-            // Nomor HP seluler Indonesia valid: diawali 08 dengan panjang 10-14 digit
-            if (strlen($cleaned) >= 10 && strlen($cleaned) <= 14 && str_starts_with($cleaned, '08')) {
-                return $cleaned;
-            }
-
-            // Nomor telepon tetap/kantor dengan kode area: diawali 0 (e.g. 022, 0265, 0231) panjang 9-12 digit
-            if (strlen($cleaned) >= 9 && strlen($cleaned) <= 12 && str_starts_with($cleaned, '0')) {
-                return $cleaned;
-            }
-        }
-
-        return null;
+        return DataNormalizerService::normalizePhone($phone);
     }
 
     /**
@@ -58,7 +25,6 @@ class CustomerSyncService
         if (!$val) {
             return 0.0;
         }
-        // Hapus format Rp, pemisah ribuan titik/koma, spasi
         $cleaned = str_replace([',', ' ', 'Rp', 'rp', 'RP'], '', trim($val));
         return (float) (preg_replace('/[^\d.-]/', '', $cleaned) ?: 0.0);
     }
@@ -84,7 +50,7 @@ class CustomerSyncService
 
     /**
      * Sinkronisasi data Customer dari file CSV sheet DATA ALL (Chunked Batch Upsert)
-     * Menghitung telemetri diagnostik lengkap: source rows, processed, created, updated, duplicates, invalid.
+     * Mengimpor ~27.500 baris sumber menjadi master pelanggan utuh di database.
      */
     public static function syncFromDataAllCsv(string $csvPath): array
     {
@@ -122,6 +88,8 @@ class CustomerSyncService
         $noHpIdx      = $colMap['NO HP'] ?? ($colMap['NO_HP'] ?? ($colMap['NOHP'] ?? null));
         $cpIdx        = $colMap['CP'] ?? null;
         $emailIdx     = $colMap['EMAIL'] ?? null;
+        $billCatIdx   = $colMap['BILL CATEGORY'] ?? ($colMap['BILL_CATEGORY'] ?? null);
+        $petugasIdx   = $colMap['PETUGAS'] ?? ($colMap['PETUGAS VISIT'] ?? ($colMap['COLL AGENT'] ?? null));
 
         if ($sndIdx === null) {
             fclose($handle);
@@ -135,12 +103,19 @@ class CustomerSyncService
         $duplicateInSource   = 0;
         $invalidSkipped      = 0;
         $validPhonesCount    = 0;
+        $pranpcCount         = 0;
 
         $seenSndsInCsv = [];
         $chunkSize     = 1000;
         $chunkRows     = [];
 
-        $colIndices = compact('sndIdx', 'ncliIdx', 'namaIdx', 'alamatIdx', 'stoIdx', 'datelIdx', 'produkIdx', 'saldoIdx', 'umurIdx', 'noHpIdx', 'cpIdx', 'emailIdx');
+        // Pre-load AR Agent map
+        $arMap = [];
+        foreach (ArAgent::all() as $agent) {
+            $arMap[strtoupper($agent->name)] = $agent->id;
+        }
+
+        $colIndices = compact('sndIdx', 'ncliIdx', 'namaIdx', 'alamatIdx', 'stoIdx', 'datelIdx', 'produkIdx', 'saldoIdx', 'umurIdx', 'noHpIdx', 'cpIdx', 'emailIdx', 'billCatIdx', 'petugasIdx');
 
         DB::beginTransaction();
         try {
@@ -165,13 +140,13 @@ class CustomerSyncService
                 $chunkRows[] = $row;
 
                 if (count($chunkRows) >= $chunkSize) {
-                    self::processChunk($chunkRows, $updatedCount, $createdCount, $validPhonesCount, $colIndices);
+                    self::processChunk($chunkRows, $updatedCount, $createdCount, $validPhonesCount, $pranpcCount, $arMap, $colIndices);
                     $chunkRows = [];
                 }
             }
 
             if (!empty($chunkRows)) {
-                self::processChunk($chunkRows, $updatedCount, $createdCount, $validPhonesCount, $colIndices);
+                self::processChunk($chunkRows, $updatedCount, $createdCount, $validPhonesCount, $pranpcCount, $arMap, $colIndices);
             }
 
             DB::commit();
@@ -179,7 +154,7 @@ class CustomerSyncService
 
             $totalCustomersNow = Customer::count();
 
-            Log::info("[CustomerSyncService] DATA ALL Selesai. Source: {$totalSourceRows}, Processed: {$totalProcessedRows}, Created: {$createdCount}, Updated: {$updatedCount}, Duplicates: {$duplicateInSource}, Skipped: {$invalidSkipped}, Total in DB: {$totalCustomersNow}");
+            Log::info("[CustomerSyncService] DATA ALL Selesai. Source: {$totalSourceRows}, Processed: {$totalProcessedRows}, Created: {$createdCount}, Updated: {$updatedCount}, Duplicates: {$duplicateInSource}, Skipped: {$invalidSkipped}, PRANPC: {$pranpcCount}, Total in DB: {$totalCustomersNow}");
 
             return [
                 'total_source_rows'       => $totalSourceRows,
@@ -189,6 +164,7 @@ class CustomerSyncService
                 'duplicate_in_source'     => $duplicateInSource,
                 'invalid_skipped'         => $invalidSkipped,
                 'valid_phones_extracted'  => $validPhonesCount,
+                'pranpc_customers'        => $pranpcCount,
                 'total_customers_now'     => $totalCustomersNow,
             ];
         } catch (\Throwable $e) {
@@ -202,8 +178,15 @@ class CustomerSyncService
     /**
      * Proses batch chunk baris CSV ke database
      */
-    private static function processChunk(array $rows, int &$updatedCount, int &$createdCount, int &$validPhonesCount, array $colIndices): void
-    {
+    private static function processChunk(
+        array $rows,
+        int &$updatedCount,
+        int &$createdCount,
+        int &$validPhonesCount,
+        int &$pranpcCount,
+        array &$arMap,
+        array $colIndices
+    ): void {
         extract($colIndices);
 
         $snds = [];
@@ -216,13 +199,13 @@ class CustomerSyncService
                 continue;
             }
 
-            // Cari nomor HP dari NO HP terlebih dahulu, jika kosong/invalid cari dari CP
+            // Nomor HP: Cari dari NO HP terlebih dahulu, jika kosong/invalid cari dari CP
             $rawHp = !empty($row[$noHpIdx]) ? trim((string)$row[$noHpIdx]) : '';
             $rawCp = !empty($row[$cpIdx]) ? trim((string)$row[$cpIdx]) : '';
 
-            $validHp = self::cleanPhoneNumber($rawHp);
+            $validHp = DataNormalizerService::normalizePhone($rawHp);
             if (!$validHp && !empty($rawCp)) {
-                $validHp = self::cleanPhoneNumber($rawCp);
+                $validHp = DataNormalizerService::normalizePhone($rawCp);
             }
 
             if ($validHp) {
@@ -241,6 +224,32 @@ class CustomerSyncService
             $email         = !empty($row[$emailIdx]) ? trim((string)$row[$emailIdx]) : null;
             $saldo         = $saldoIdx !== null ? self::cleanNumeric($row[$saldoIdx] ?? null) : 0.0;
 
+            // Kategori Tagihan & PRANPC
+            $rawBillCat = !empty($row[$billCatIdx]) ? trim((string)$row[$billCatIdx]) : 'Eksisting';
+            $billCat = DataNormalizerService::normalizeBillCategory($rawBillCat);
+            $isPranpc = ($billCat === 'PRANPC');
+
+            if ($isPranpc) {
+                $pranpcCount++;
+            }
+
+            // AR Agent assignment
+            $rawPetugas = !empty($row[$petugasIdx]) ? trim((string)$row[$petugasIdx]) : null;
+            $assignedArId = null;
+            if ($rawPetugas) {
+                $canonicalAr = DataNormalizerService::normalizeArName($rawPetugas);
+                if ($canonicalAr) {
+                    $arKey = strtoupper($canonicalAr);
+                    if (isset($arMap[$arKey])) {
+                        $assignedArId = $arMap[$arKey];
+                    } else {
+                        $newAgent = ArAgent::create(['name' => $canonicalAr, 'is_active' => true]);
+                        $assignedArId = $newAgent->id;
+                        $arMap[$arKey] = $assignedArId;
+                    }
+                }
+            }
+
             $snds[] = $snd;
             $parsedRows[$snd] = [
                 'nomor_internet'        => $snd,
@@ -254,6 +263,9 @@ class CustomerSyncService
                 'email'                 => $email,
                 'saldo_piutang'         => $saldo,
                 'umur_customer'         => $umurCustomer,
+                'is_pranpc'             => $isPranpc,
+                'bill_category'         => $billCat,
+                'assigned_ar_agent_id'  => $assignedArId,
             ];
         }
 
@@ -303,6 +315,15 @@ class CustomerSyncService
                 if (!empty($data['nama_layanan_internet']) && $cust->nama_layanan_internet !== $data['nama_layanan_internet']) {
                     $updates['nama_layanan_internet'] = $data['nama_layanan_internet'];
                 }
+                if ($cust->is_pranpc !== $data['is_pranpc']) {
+                    $updates['is_pranpc'] = $data['is_pranpc'];
+                }
+                if ($cust->bill_category !== $data['bill_category']) {
+                    $updates['bill_category'] = $data['bill_category'];
+                }
+                if (!empty($data['assigned_ar_agent_id']) && $cust->assigned_ar_agent_id !== $data['assigned_ar_agent_id']) {
+                    $updates['assigned_ar_agent_id'] = $data['assigned_ar_agent_id'];
+                }
 
                 if (!empty($updates)) {
                     $cust->update($updates);
@@ -323,10 +344,10 @@ class CustomerSyncService
                 }
 
                 $toInsert[] = array_merge($data, [
-                    'risk_score'        => $riskScore,
-                    'risk_level'        => $riskLevel,
-                    'created_at'        => $now,
-                    'updated_at'        => $now,
+                    'risk_score' => $riskScore,
+                    'risk_level' => $riskLevel,
+                    'created_at' => $now,
+                    'updated_at' => $now,
                 ]);
                 $createdCount++;
             }

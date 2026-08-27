@@ -22,6 +22,9 @@ class Customer extends Model
         'tipe_hunian_terbaru',
         'saldo_piutang',
         'umur_customer',
+        'is_pranpc',
+        'bill_category',
+        'assigned_ar_agent_id',
         'risk_score',
         'risk_level',
         'last_visit_at',
@@ -32,12 +35,23 @@ class Customer extends Model
 
     protected $casts = [
         'saldo_piutang' => 'decimal:2',
+        'is_pranpc'     => 'boolean',
         'last_visit_at' => 'datetime',
     ];
 
     public function visits()
     {
         return $this->hasMany(Visit::class);
+    }
+
+    public function latestVisit()
+    {
+        return $this->hasOne(Visit::class)->latestOfMany('tanggal_input');
+    }
+
+    public function assignedArAgent()
+    {
+        return $this->belongsTo(ArAgent::class, 'assigned_ar_agent_id');
     }
 
     public function viseeproData()
@@ -94,24 +108,15 @@ class Customer extends Model
         $namaPelanggan = $this->nama_pelanggan ?: '-';
 
         return "Selamat siang Bapak/Ibu.\n\n"
-            . "Perkenalkan, saya Aisyah dari Telkom Indonesia.\n\n"
+            . "Perkenalkan, saya dari Tim Collection Telkom Indonesia.\n\n"
             . "Mohon izin menghubungi terkait layanan Indibiz dengan nomor internet {$nomorInternet} atas nama {$namaPelanggan}\n"
             . "Berdasarkan data kami, saat ini masih terdapat tagihan layanan yang belum dilakukan pembayaran. Apakah ada kendala yang menyebabkan pembayaran belum dapat dilakukan, Bapak/Ibu?\n\n"
-            . "Apabila berkenan, mohon diinformasikan perkiraan tanggal pembayaran yang akan dilakukan agar dapat kami bantu monitoring. Kira-kira pembayaran dapat dilakukan hari ini atau besok ya, Bapak/Ibu?\n\n"
+            . "Apabila berkenan, mohon diinformasikan perkiraan tanggal pembayaran yang akan dilakukan agar dapat kami bantu monitoring.\n\n"
             . "Sebagai informasi, pembayaran dapat dilakukan melalui Mobile Banking, Internet Banking, ATM, Indomaret, Alfamart, Tokopedia, GoPay, Kantor Pos, maupun kanal pembayaran resmi lainnya.\n\n"
             . "Terima kasih atas perhatian dan kerja sama Bapak/Ibu. Semoga sehat selalu dan aktivitasnya berjalan lancar.\n\n"
-            . "INFO PENTING :\n\n"
+            . "INFO PENTING :\n"
             . "1. WASPADA terhadap oknum Teknisi yang datang dengan alasan menarik ONT untuk menggantikan dengan yang baru.\n"
-            . "2. Tidak disarankan juga untuk menitip pembayaran melalui Account manager (AM) & Account Representatif (AR) atau Petugas yang datang.\n"
-            . "3. Jika Anda membutuhkan bantuan lainnya, silakan hubungi kami kapan pun melalui:\n"
-            . "✔️Call Center 1500250 atau 08001835566\n"
-            . "✔️Email: tenesa@telkom.co.id\n"
-            . "✔️Website: https://indibiz.co.id/\n"
-            . "Atau kunjungi INDEX (Indibiz Experience Center) terdekat.\n"
-            . "📍Indibiz Experience Center Cirebon\n"
-            . "     Jl Pagongan No. 11 Pekalangan, Pekalipan, Kota Cirebon\n"
-            . "📍Indibiz Experience Center Tasikmalaya\n"
-            . "     Jl RAA. Wiratanuningrat No.14,Tawang, Kota Tasikmalaya\n\n"
+            . "2. Tidak disarankan menitip pembayaran melalui Account Manager (AM) & Account Representative (AR) atau Petugas yang datang.\n\n"
             . "Terima kasih\n"
             . "Telkom Witel Priangan Timur";
     }

@@ -6,8 +6,8 @@
 @section('content')
 
 {{-- TOP BAR ACTION & BACK BUTTON --}}
-<div class="d-flex justify-content-between align-items-center mb-3">
-    <a href="{{ url('/customers') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px;">
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <a href="{{ route('customers.index') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px;">
         <i class="bi bi-arrow-left"></i> Kembali ke Daftar Customer
     </a>
     <div class="d-flex gap-2">
@@ -22,18 +22,23 @@
 
 <div class="row g-3 mb-4">
     {{-- ============================= --}}
-    {{-- 1. IDENTITAS PELANGGAN --}}
+    {{-- 1. IDENTITAS PELANGGAN 360 --}}
     {{-- ============================= --}}
     <div class="col-lg-7">
         <div class="card h-100">
-            <div class="d-flex align-items-center justify-content-between mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
                 <div class="section-title">
                     <i class="bi bi-person-vcard-fill" style="color:var(--primary); margin-right:6px;"></i>
-                    Identitas Pelanggan (Customer Master)
+                    Identitas Pelanggan (Customer 360)
                 </div>
-                <span class="badge" style="background:var(--secondary); color:var(--ink-700); font-size:12px; font-weight:600; padding:4px 8px; border-radius:6px;">
-                    NCLI: {{ $customer->ncli ?: '-' }}
-                </span>
+                <div class="d-flex align-items-center gap-2">
+                    @if($customer->is_pranpc)
+                        <span class="badge-pranpc"><i class="bi bi-tag-fill"></i> PRANPC</span>
+                    @endif
+                    <span class="badge" style="background:var(--secondary); color:var(--ink-700); font-size:12px; font-weight:600; padding:4px 8px; border-radius:6px;">
+                        NCLI: {{ $customer->ncli ?: '-' }}
+                    </span>
+                </div>
             </div>
 
             <div class="row row-cols-1 row-cols-sm-2 g-3">
@@ -81,6 +86,20 @@
                 </div>
 
                 <div>
+                    <div style="font-size:11px; color:var(--ink-400); font-weight:700; text-transform:uppercase;">Kategori Tagihan</div>
+                    <div style="font-size:13px; font-weight:600; color:var(--ink-700);">
+                        {{ $customer->bill_category ?: 'Eksisting' }}
+                    </div>
+                </div>
+
+                <div>
+                    <div style="font-size:11px; color:var(--ink-400); font-weight:700; text-transform:uppercase;">AR Penanggung Jawab</div>
+                    <div style="font-size:13.5px; font-weight:700; color:#2563EB;">
+                        <i class="bi bi-person-badge"></i> {{ $customer->assignedArAgent ? $customer->assignedArAgent->name : '-' }}
+                    </div>
+                </div>
+
+                <div>
                     <div style="font-size:11px; color:var(--ink-400); font-weight:700; text-transform:uppercase;">Wilayah (Datel / STO)</div>
                     <div style="font-size:13.5px; font-weight:600; color:var(--ink-700);">
                         {{ $customer->datel ?: ($customer->sto ?: '-') }}
@@ -98,14 +117,14 @@
     </div>
 
     {{-- ============================= --}}
-    {{-- 2. COLLECTION & CHURN RISK INTELLIGENCE --}}
+    {{-- 2. COLLECTION & INDIKASI RISIKO CHURN --}}
     {{-- ============================= --}}
     <div class="col-lg-5">
         <div class="card h-100" style="border-left:4px solid {{ $churnEval['level'] === 'CRITICAL' ? '#991B1B' : ($churnEval['level'] === 'HIGH' ? 'var(--danger)' : 'var(--primary)') }};">
             <div class="d-flex align-items-center justify-content-between mb-3">
                 <div class="section-title">
                     <i class="bi bi-shield-shaded" style="color:var(--primary); margin-right:6px;"></i>
-                    Collection &amp; Churn Risk
+                    Collection &amp; Indikasi Risiko Churn
                 </div>
                 @if($churnEval['level'] === 'CRITICAL')
                     <span class="badge" style="background:#450A0A; color:#fff; font-size:11px; padding:4px 8px; border-radius:99px;">CRITICAL RISK ({{ $churnEval['score'] }})</span>
@@ -241,44 +260,15 @@
                 <div class="timeline-item d-flex gap-3 py-3" style="border-bottom:1px solid var(--border);">
                     {{-- FOTO THUMBNAIL DENGAN MODAL --}}
                     <div style="flex-shrink:0;">
-                        @if($visit->drive_file_id)
-                            <button type="button" class="btn p-0 border-0 bg-transparent"
-                                    data-bs-toggle="modal" data-bs-target="#photoModal{{ $visit->id }}">
-                                <img src="{{ $photoUrl }}"
+                        @if($visit->foto_url)
+                            <a href="{{ $visit->foto_url }}" target="_blank">
+                                <img src="{{ $visit->foto_url }}"
                                      class="photo-thumb"
                                      alt="Foto visit"
                                      loading="lazy"
                                      style="width:56px; height:56px; object-fit:cover; border-radius:10px; border:1px solid var(--border); cursor:pointer;"
-                                     onerror="this.src='{{ asset('images/photo-placeholder.svg') }}'">
-                            </button>
-
-                            {{-- MODAL PREVIEW FOTO --}}
-                            <div class="modal fade" id="photoModal{{ $visit->id }}" tabindex="-1" aria-hidden="true">
-                                <div class="modal-dialog modal-dialog-centered modal-lg">
-                                    <div class="modal-content" style="border-radius:16px; overflow:hidden;">
-                                        <div class="modal-header">
-                                            <h6 class="modal-title font-weight-bold">
-                                                Foto Visit — {{ $customer->nama_pelanggan }} ({{ $visit->tanggal_input?->format('d/m/Y') }})
-                                            </h6>
-                                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                        </div>
-                                        <div class="modal-body text-center p-3" style="background:#0B0F19;">
-                                            <img src="{{ $photoUrl }}"
-                                                 alt="Foto visit {{ $customer->nama_pelanggan }}"
-                                                 style="max-width:100%; max-height:70vh; object-fit:contain; border-radius:8px;"
-                                                 onerror="this.src='{{ asset('images/photo-placeholder.svg') }}'">
-                                        </div>
-                                        <div class="modal-footer">
-                                            @if($visit->drive_url)
-                                                <a href="{{ $visit->drive_url }}" target="_blank" rel="noopener noreferrer" class="btn btn-outline-secondary btn-sm">
-                                                    <i class="bi bi-google"></i> Buka di Google Drive
-                                                </a>
-                                            @endif
-                                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Tutup</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
+                                     onerror="this.src='{{ $photoUrl }}'">
+                            </a>
                         @else
                             <div class="photo-placeholder" style="width:56px; height:56px; border-radius:10px; display:flex; align-items:center; justify-content:center; background:var(--secondary); color:var(--ink-400);">
                                 <i class="bi bi-image" style="font-size:20px;"></i>

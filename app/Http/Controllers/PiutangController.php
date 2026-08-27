@@ -6,15 +6,28 @@ use App\Models\Customer;
 use App\Models\ArAgent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class PiutangController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Customer::with(['visits', 'caringLogs'])
+        $user = Auth::user();
+        $query = Customer::with(['visits', 'caringLogs', 'assignedArAgent'])
             ->where('saldo_piutang', '>', 0);
 
-        // Filter Search: Nama, No Internet, No HP
+        // Jika user AR, batasi ke data tanggung jawabnya
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $query->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
+
+        // Filter Search: Nama, No Internet, No HP, Datel
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -35,6 +48,15 @@ class PiutangController extends Controller
             $query->where('datel', $request->datel);
         }
 
+        // Filter PRANPC
+        if ($request->filled('is_pranpc')) {
+            if ($request->is_pranpc === '1') {
+                $query->where('is_pranpc', true);
+            } else {
+                $query->where('is_pranpc', false);
+            }
+        }
+
         // Sorting
         $sortBy = $request->input('sort_by', 'saldo_piutang');
         $sortOrder = $request->input('sort_order', 'desc');
@@ -48,20 +70,33 @@ class PiutangController extends Controller
         $customers = $query->paginate(20)->withQueryString();
 
         // KPI Summary Piutang
-        $totalPiutang = Customer::sum('saldo_piutang');
-        $totalPelangganMenunggak = Customer::where('saldo_piutang', '>', 0)->count();
+        $baseKpiQuery = Customer::where('saldo_piutang', '>', 0);
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $baseKpiQuery->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
+
+        $totalPiutang = (clone $baseKpiQuery)->sum('saldo_piutang');
+        $totalPelangganMenunggak = (clone $baseKpiQuery)->count();
         $avgPiutang = $totalPelangganMenunggak > 0 ? round($totalPiutang / $totalPelangganMenunggak) : 0;
-        $maxPiutang = Customer::max('saldo_piutang') ?: 0;
+        $maxPiutang = (clone $baseKpiQuery)->max('saldo_piutang') ?: 0;
+        $pranpcPiutang = (clone $baseKpiQuery)->where('is_pranpc', true)->sum('saldo_piutang');
+        $pranpcCount = (clone $baseKpiQuery)->where('is_pranpc', true)->count();
 
         // Aging Bucket Distribusi
-        $agingBuckets = Customer::where('saldo_piutang', '>', 0)
+        $agingBuckets = (clone $baseKpiQuery)
             ->select('umur_customer', DB::raw('COUNT(*) as total_cust'), DB::raw('SUM(saldo_piutang) as total_saldo'))
             ->groupBy('umur_customer')
             ->orderByDesc('total_saldo')
             ->get();
 
         // Distribusi Piutang per Datel / Wilayah
-        $datelDistribution = Customer::where('saldo_piutang', '>', 0)
+        $datelDistribution = (clone $baseKpiQuery)
             ->whereNotNull('datel')
             ->where('datel', '!=', '')
             ->select('datel', DB::raw('COUNT(*) as total_cust'), DB::raw('SUM(saldo_piutang) as total_saldo'))
@@ -79,6 +114,8 @@ class PiutangController extends Controller
             'totalPelangganMenunggak',
             'avgPiutang',
             'maxPiutang',
+            'pranpcPiutang',
+            'pranpcCount',
             'agingBuckets',
             'datelDistribution',
             'datelList',
@@ -93,7 +130,18 @@ class PiutangController extends Controller
      */
     public function export(Request $request)
     {
+        $user = Auth::user();
         $query = Customer::where('saldo_piutang', '>', 0);
+
+        if ($user && $user->isAr() && $user->ar_agent_id) {
+            $arId = $user->ar_agent_id;
+            $query->where(function ($q) use ($arId) {
+                $q->where('assigned_ar_agent_id', $arId)
+                  ->orWhereHas('visits', function ($vq) use ($arId) {
+                      $vq->where('ar_agent_id', $arId);
+                  });
+            });
+        }
 
         if ($request->filled('search')) {
             $search = $request->search;
@@ -109,6 +157,13 @@ class PiutangController extends Controller
         }
         if ($request->filled('datel')) {
             $query->where('datel', $request->datel);
+        }
+        if ($request->filled('is_pranpc')) {
+            if ($request->is_pranpc === '1') {
+                $query->where('is_pranpc', true);
+            } else {
+                $query->where('is_pranpc', false);
+            }
         }
 
         $query->orderByDesc('saldo_piutang');
@@ -132,6 +187,7 @@ class PiutangController extends Controller
                 'Nomor Internet',
                 'Nama Pelanggan',
                 'Nomor HP',
+                'Status PRANPC',
                 'Datel',
                 'STO',
                 'Umur Tunggakan / Aging',
@@ -146,6 +202,7 @@ class PiutangController extends Controller
                         $c->nomor_internet ?? '',
                         $c->nama_pelanggan ?? '',
                         $c->no_hp_terbaru ?? '',
+                        $c->is_pranpc ? 'PRANPC' : 'NON-PRANPC',
                         $c->datel ?? '',
                         $c->sto ?? '',
                         $c->umur_customer ?? '',
