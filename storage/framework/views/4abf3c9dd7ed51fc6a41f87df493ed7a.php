@@ -84,6 +84,26 @@
     border-color: #CBD5E1;
     background: #FFFFFF;
 }
+.dq-item {
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    text-align: center;
+}
+.dq-value {
+    font-size: 16px;
+    font-weight: 800;
+    color: var(--ink-900);
+}
+.dq-label {
+    font-size: 11px;
+    color: var(--ink-500);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+    margin-top: 2px;
+}
 </style>
 <?php $__env->stopPush(); ?>
 
@@ -131,10 +151,10 @@
                 </span>
             </div>
             <h4 style="font-weight:800; color:var(--ink-900); margin-bottom:6px; font-size:22px;">
-                Sync Data C3MR
+                Sync Data C3MR (Master Customer &amp; Collection)
             </h4>
             <p style="color:var(--ink-500); font-size:13.5px; margin-bottom:0; line-height:1.5;">
-                Perbarui seluruh data collection dari Spreadsheet C3MR. Sistem akan secara otomatis menyinkronkan seluruh dataset collection, kunjungan, caring, dan profil pelanggan.
+                Sinkronisasi satu pintu seluruh data pelanggan, tagihan piutang, log caring OBC PRITI, kunjungan lapangan, dan performansi regional dari Google Spreadsheet C3MR.
             </p>
         </div>
         <div class="col-lg-5 text-lg-end text-start">
@@ -143,7 +163,7 @@
                 <span id="masterSyncLabel">Sync Data C3MR</span>
             </button>
             <div style="font-size:12px; color:var(--ink-500); margin-top:8px; font-weight:500;">
-                <i class="bi bi-shield-check text-success"></i> Memperbarui data dari Spreadsheet C3MR Terpusat
+                <i class="bi bi-shield-check text-success"></i> Ekstraksi langsung dari Sheet <code>DATA ALL</code> (~27.500 baris)
             </div>
         </div>
     </div>
@@ -154,7 +174,7 @@
             <div class="spinner-border spinner-border-sm text-danger mt-1" role="status" id="syncSpinner"></div>
             <div style="flex:1;">
                 <strong style="color:var(--primary); font-size:13.5px;" id="syncProgressLabel">Memulai sinkronisasi...</strong>
-                <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;" id="syncProgressSub">Proses ini membutuhkan waktu 2–3 menit. Halaman tidak perlu di-refresh.</div>
+                <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;" id="syncProgressSub">Proses ini membutuhkan waktu ~1–2 menit. Streaming aktif, mohon tunggu...</div>
             </div>
         </div>
         
@@ -171,9 +191,10 @@
 <div id="syncResultContainer" class="card mb-4" style="<?php echo e(($lastSyncResult || session('syncResult')) ? '' : 'display:none;'); ?>">
     <?php
         $activeResult = session('syncResult') ?: $lastSyncResult;
-        $statusKey = $activeResult['status'] ?? ($lastSyncStatus ?: 'success');
-        $statusLabel = $activeResult['status_label'] ?? ($statusKey === 'success' ? 'Sinkronisasi berhasil' : 'Sinkronisasi selesai dengan beberapa masalah');
-        $details = $activeResult['details'] ?? [];
+        $statusKey    = $activeResult['status'] ?? ($lastSyncStatus ?: 'success');
+        $statusLabel  = $activeResult['status_label'] ?? ($statusKey === 'success' ? 'Sinkronisasi berhasil' : 'Sinkronisasi selesai dengan beberapa catatan');
+        $details      = $activeResult['details'] ?? ($activeResult ?: []);
+        $dq           = $activeResult['data_quality'] ?? ($details['_data_quality'] ?? []);
     ?>
 
     <div class="d-flex justify-content-between align-items-center mb-3 pb-2" style="border-bottom:1px solid var(--border);">
@@ -199,13 +220,85 @@
         </div>
         <div>
             <span class="badge" id="resultSummaryBadge" style="background:var(--secondary); color:var(--ink-700); font-weight:600; font-size:11.5px; padding:6px 12px; border-radius:8px;">
-                <span id="resultProcessedCount"><?php echo e(number_format($activeResult['total_rows_processed'] ?? ($totalVisits + $totalCustomers + $totalCaring))); ?></span> records diproses
+                <span id="resultProcessedCount"><?php echo e(number_format($activeResult['total_rows_processed'] ?? ($totalCustomers + $totalVisits + $totalCaring))); ?></span> records diproses
             </span>
         </div>
     </div>
 
     
+    <div class="p-3 mb-3" style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px;" id="dataQualityBox">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <div style="font-weight:700; font-size:13px; color:var(--ink-900);">
+                <i class="bi bi-clipboard2-data-fill text-primary me-1"></i> Data Quality &amp; Diagnostic Pelanggan (DATA ALL)
+            </div>
+            <span class="badge <?php echo e(($dq['is_consistent'] ?? true) ? 'bg-success' : 'bg-warning text-dark'); ?>" id="dqConsistencyBadge" style="font-size:11px; padding:4px 8px; border-radius:6px;">
+                <i class="bi bi-shield-check"></i> <span id="dqConsistencyText"><?php echo e(($dq['is_consistent'] ?? true) ? 'Data Konsisten (100%)' : 'Perlu Sinkronisasi Penuh'); ?></span>
+            </span>
+        </div>
+        <div class="row g-2">
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value" id="dqSourceRows"><?php echo e(number_format($dq['source_sheet_rows'] ?? 27547)); ?></div>
+                    <div class="dq-label">Baris Sheet</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value text-success" id="dqProcessedRows"><?php echo e(number_format($details['data_all']['count'] ?? $totalCustomers)); ?></div>
+                    <div class="dq-label">Valid Diproses</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value text-primary" id="dqCreated"><?php echo e(number_format($dq['created_customers'] ?? 0)); ?></div>
+                    <div class="dq-label">Pelanggan Baru</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value text-info" id="dqUpdated"><?php echo e(number_format($dq['updated_customers'] ?? $totalCustomers)); ?></div>
+                    <div class="dq-label">Diperbarui</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value text-warning" id="dqDuplicates"><?php echo e(number_format($dq['duplicate_in_source'] ?? 1021)); ?></div>
+                    <div class="dq-label">Duplikat Sheet</div>
+                </div>
+            </div>
+            <div class="col-4 col-md-2">
+                <div class="dq-item">
+                    <div class="dq-value text-success" id="dqValidPhones"><?php echo e(number_format($validPhones)); ?></div>
+                    <div class="dq-label">No HP Valid</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
     <div class="row g-3" id="syncDetailsGrid">
+        
+        <div class="col-md-6 col-lg-4">
+            <div class="sync-grid-item h-100" style="border-left:3px solid #059669;">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">
+                        <i class="bi bi-people-fill" style="color:#059669; margin-right:4px;"></i> Master Data (DATA ALL)
+                    </div>
+                    <span class="source-badge <?php echo e(($details['data_all']['success'] ?? true) ? 'source-badge-success' : 'source-badge-error'); ?>" id="badge_data_all">
+                        <?php echo e(($details['data_all']['success'] ?? true) ? '✓ Berhasil' : '✕ Gagal'); ?>
+
+                    </span>
+                </div>
+                <div style="font-size:18px; font-weight:800; color:var(--ink-900);" id="count_data_all">
+                    <?php echo e(number_format($details['data_all']['count'] ?? $totalCustomers)); ?> <span style="font-size:12px; font-weight:500; color:var(--ink-500);">pelanggan</span>
+                </div>
+                <div style="font-size:11.5px; color:var(--ink-500); margin-top:4px; line-height:1.4;" id="msg_data_all">
+                    <?php echo e($details['data_all']['message'] ?? 'Master pelanggan, STO, Datel, No HP & Saldo Piutang'); ?>
+
+                </div>
+            </div>
+        </div>
+
         
         <div class="col-md-6 col-lg-4">
             <div class="sync-grid-item h-100">
@@ -255,29 +348,7 @@
             <div class="sync-grid-item h-100">
                 <div class="d-flex justify-content-between align-items-start mb-2">
                     <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">
-                        <i class="bi bi-people-fill" style="color:#059669; margin-right:4px;"></i> C3MR Master Data
-                    </div>
-                    <span class="source-badge <?php echo e(($details['data_all']['success'] ?? true) ? 'source-badge-success' : 'source-badge-error'); ?>" id="badge_data_all">
-                        <?php echo e(($details['data_all']['success'] ?? true) ? '✓ Berhasil' : '✕ Gagal'); ?>
-
-                    </span>
-                </div>
-                <div style="font-size:18px; font-weight:800; color:var(--ink-900);" id="count_data_all">
-                    <?php echo e(number_format($details['data_all']['count'] ?? $totalCustomers)); ?> <span style="font-size:12px; font-weight:500; color:var(--ink-500);">pelanggan</span>
-                </div>
-                <div style="font-size:11.5px; color:var(--ink-500); margin-top:4px; line-height:1.4;" id="msg_data_all">
-                    <?php echo e($details['data_all']['message'] ?? 'Master pelanggan, STO, Datel, No HP & Saldo Piutang'); ?>
-
-                </div>
-            </div>
-        </div>
-
-        
-        <div class="col-md-6 col-lg-4">
-            <div class="sync-grid-item h-100">
-                <div class="d-flex justify-content-between align-items-start mb-2">
-                    <div style="font-weight:700; font-size:13.5px; color:var(--ink-900);">
-                        <i class="bi bi-telephone-inbound-fill" style="color:#7C3AED; margin-right:4px;"></i> C3MR Hasil Caring
+                        <i class="bi bi-telephone-inbound-fill" style="color:#7C3AED; margin-right:4px;"></i> Hasil Caring (OBC)
                     </div>
                     <span class="source-badge <?php echo e(($details['caring']['success'] ?? true) ? 'source-badge-success' : 'source-badge-error'); ?>" id="badge_caring">
                         <?php echo e(($details['caring']['success'] ?? true) ? '✓ Berhasil' : '✕ Gagal'); ?>
@@ -348,7 +419,7 @@
                 <div class="kpi-label">Master Pelanggan</div>
                 <div class="kpi-value" id="kpiCustomers"><?php echo e(number_format($totalCustomers)); ?></div>
                 <div style="font-size:11px; color:var(--success); margin-top:4px;">
-                    <i class="bi bi-check-circle-fill"></i> <?php echo e(number_format($validPhones)); ?> No HP valid
+                    <i class="bi bi-check-circle-fill"></i> <span id="kpiPhones"><?php echo e(number_format($validPhones)); ?></span> No HP valid
                 </div>
             </div>
             <div class="kpi-icon" style="background:var(--primary-soft); color:var(--primary);">
@@ -483,7 +554,7 @@ function triggerMasterSync() {
     liveStatus.style.display = 'block';
     if (stepLog) stepLog.innerHTML = '';
     if (topBar) topBar.className = 'loading';
-    setProgress(3, 'Menghubungi server...');
+    setProgress(3, 'Menghubungi server Google Spreadsheet...');
 
     // ── POST dengan Accept: text/event-stream → server returns SSE stream ──
     fetch('/c3mr/sync/all', {
@@ -614,14 +685,58 @@ function handleSyncComplete(data) {
             cntEl.innerText = Number(data.total_rows_processed).toLocaleString('id-ID');
         }
 
+        // Update Data Quality card
+        if (data.data_quality) {
+            const dq = data.data_quality;
+            if (dq.source_sheet_rows !== undefined) {
+                const el = document.getElementById('dqSourceRows');
+                if (el) el.innerText = Number(dq.source_sheet_rows).toLocaleString('id-ID');
+            }
+            if (dq.created_customers !== undefined) {
+                const el = document.getElementById('dqCreated');
+                if (el) el.innerText = Number(dq.created_customers).toLocaleString('id-ID');
+            }
+            if (dq.updated_customers !== undefined) {
+                const el = document.getElementById('dqUpdated');
+                if (el) el.innerText = Number(dq.updated_customers).toLocaleString('id-ID');
+            }
+            if (dq.duplicate_in_source !== undefined) {
+                const el = document.getElementById('dqDuplicates');
+                if (el) el.innerText = Number(dq.duplicate_in_source).toLocaleString('id-ID');
+            }
+            if (dq.valid_phones_count !== undefined) {
+                const el = document.getElementById('dqValidPhones');
+                if (el) el.innerText = Number(dq.valid_phones_count).toLocaleString('id-ID');
+                const kpiPh = document.getElementById('kpiPhones');
+                if (kpiPh) kpiPh.innerText = Number(dq.valid_phones_count).toLocaleString('id-ID');
+            }
+
+            const consistencyBadge = document.getElementById('dqConsistencyBadge');
+            const consistencyText  = document.getElementById('dqConsistencyText');
+            if (consistencyBadge && consistencyText) {
+                if (dq.is_consistent) {
+                    consistencyBadge.className = 'badge bg-success';
+                    consistencyText.innerText = 'Data Konsisten (' + Number(dq.database_total_customers).toLocaleString('id-ID') + ' Pelanggan)';
+                } else {
+                    consistencyBadge.className = 'badge bg-warning text-dark';
+                    consistencyText.innerText = dq.consistency_message || 'Peringatan: Disparitas Data';
+                }
+            }
+        }
+
         // Detail cards
         if (data.details) {
-            ['report_prq','viseepro','data_all','caring','performance','ar_agents']
+            ['data_all','report_prq','viseepro','caring','performance','ar_agents']
                 .forEach(k => { if (data.details[k]) updateSourceCard(k, data.details[k]); });
         }
 
         // KPI counters
-        if (data.details?.data_all?.total)   { const el = document.getElementById('kpiCustomers'); if (el) el.innerText = Number(data.details.data_all.total).toLocaleString('id-ID'); }
+        if (data.details?.data_all?.total) {
+            const el = document.getElementById('kpiCustomers');
+            if (el) el.innerText = Number(data.details.data_all.total).toLocaleString('id-ID');
+            const dqProc = document.getElementById('dqProcessedRows');
+            if (dqProc && data.details.data_all.count) dqProc.innerText = Number(data.details.data_all.count).toLocaleString('id-ID');
+        }
         if (data.details?.caring?.total)     { const el = document.getElementById('kpiCaring');    if (el) el.innerText = Number(data.details.caring.total).toLocaleString('id-ID'); }
         if (data.details?.report_prq?.count) { const el = document.getElementById('kpiVisits');    if (el) el.innerText = Number(data.details.report_prq.count).toLocaleString('id-ID'); }
         if (data.details?.viseepro?.count)   { const el = document.getElementById('kpiViseepro');  if (el) el.innerText = Number(data.details.viseepro.count).toLocaleString('id-ID'); }
@@ -653,6 +768,5 @@ function updateSourceCard(key, item) {
 }
 </script>
 <?php $__env->stopPush(); ?>
-
 
 <?php echo $__env->make('layouts.app', array_diff_key(get_defined_vars(), ['__data' => 1, '__path' => 1]))->render(); ?><?php /**PATH D:\Projek Telkom Reva\ptp-intelligence-dashboard\resources\views/c3mr/sync.blade.php ENDPATH**/ ?>

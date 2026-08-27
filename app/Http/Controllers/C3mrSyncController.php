@@ -126,41 +126,41 @@ class C3mrSyncController extends Controller
                     }
                 }
 
-                // ── TAHAP 2: Report PRQ ───────────────────────────────────────────
-                $send('progress', ['step' => 'report_prq', 'message' => 'Menyinkronkan Report PRQ (Visit lapangan & AR Agent)...', 'pct' => 38]);
-                $reportPrq = C3mrSyncService::syncReportPrq();
-                $send('progress', ['step' => 'report_prq_done', 'message' => 'Report PRQ: ' . $reportPrq['message'], 'pct' => 46]);
-
-                // ── TAHAP 3: VISEEPRO ─────────────────────────────────────────────
-                $send('progress', ['step' => 'viseepro', 'message' => 'Menyinkronkan data VISEEPRO (Aktivitas AR)...', 'pct' => 48]);
-                $viseepro = C3mrSyncService::syncViseepro();
-                $send('progress', ['step' => 'viseepro_done', 'message' => 'VISEEPRO: ' . $viseepro['message'], 'pct' => 53]);
-
-                // ── TAHAP 4: DATA ALL (Master Customer ~27.000 records) ───────────
-                $send('progress', ['step' => 'data_all', 'message' => 'Menyinkronkan master data pelanggan (DATA ALL — ~27.000 records)...', 'pct' => 56]);
+                // ── TAHAP 2: DATA ALL (Master Pelanggan ~27.000 records) ──────────
+                $send('progress', ['step' => 'data_all', 'message' => 'Menyinkronkan master data pelanggan (DATA ALL — ~27.000 records)...', 'pct' => 35]);
                 $dataAll = C3mrSyncService::syncDataAll();
-                $send('progress', ['step' => 'data_all_done', 'message' => 'DATA ALL: ' . $dataAll['message'], 'pct' => 72]);
+                $send('progress', ['step' => 'data_all_done', 'message' => 'DATA ALL: ' . $dataAll['message'], 'pct' => 68]);
+
+                // ── TAHAP 3: Report PRQ ───────────────────────────────────────────
+                $send('progress', ['step' => 'report_prq', 'message' => 'Menyinkronkan Report PRQ (Visit lapangan & AR Agent)...', 'pct' => 70]);
+                $reportPrq = C3mrSyncService::syncReportPrq();
+                $send('progress', ['step' => 'report_prq_done', 'message' => 'Report PRQ: ' . $reportPrq['message'], 'pct' => 78]);
+
+                // ── TAHAP 4: VISEEPRO ─────────────────────────────────────────────
+                $send('progress', ['step' => 'viseepro', 'message' => 'Menyinkronkan data VISEEPRO (Aktivitas AR)...', 'pct' => 80]);
+                $viseepro = C3mrSyncService::syncViseepro();
+                $send('progress', ['step' => 'viseepro_done', 'message' => 'VISEEPRO: ' . $viseepro['message'], 'pct' => 85]);
 
                 // ── TAHAP 5: Hasil Caring ─────────────────────────────────────────
-                $send('progress', ['step' => 'caring', 'message' => 'Menyinkronkan log Hasil Caring OBC PRITI...', 'pct' => 75]);
+                $send('progress', ['step' => 'caring', 'message' => 'Menyinkronkan log Hasil Caring OBC PRITI...', 'pct' => 87]);
                 $caring = C3mrSyncService::syncCaring();
-                $send('progress', ['step' => 'caring_done', 'message' => 'Caring: ' . $caring['message'], 'pct' => 87]);
+                $send('progress', ['step' => 'caring_done', 'message' => 'Caring: ' . $caring['message'], 'pct' => 93]);
 
                 // ── TAHAP 6: Performansi Witel ────────────────────────────────────
-                $send('progress', ['step' => 'performance', 'message' => 'Menyinkronkan Performansi Witel (Regional)...', 'pct' => 90]);
+                $send('progress', ['step' => 'performance', 'message' => 'Menyinkronkan Performansi Witel (Regional)...', 'pct' => 94]);
                 $performance = C3mrSyncService::syncPerformance();
-                $send('progress', ['step' => 'performance_done', 'message' => 'Performansi: ' . $performance['message'], 'pct' => 94]);
+                $send('progress', ['step' => 'performance_done', 'message' => 'Performansi: ' . $performance['message'], 'pct' => 96]);
 
                 // ── TAHAP 7: AR Agents ────────────────────────────────────────────
-                $send('progress', ['step' => 'ar_agents', 'message' => 'Normalisasi & konsolidasi AR Agents...', 'pct' => 96]);
+                $send('progress', ['step' => 'ar_agents', 'message' => 'Normalisasi & konsolidasi AR Agents...', 'pct' => 97]);
                 $arAgents = C3mrSyncService::consolidateAr();
                 $send('progress', ['step' => 'ar_agents_done', 'message' => 'AR Agents: ' . $arAgents['message'], 'pct' => 98]);
 
-                // ── Agregasi hasil ────────────────────────────────────────────────
+                // ── Agregasi hasil & Data Quality ─────────────────────────────────
                 $results = [
+                    'data_all'    => $dataAll,
                     'report_prq'  => $reportPrq,
                     'viseepro'    => $viseepro,
-                    'data_all'    => $dataAll,
                     'caring'      => $caring,
                     'performance' => $performance,
                     'ar_agents'   => $arAgents,
@@ -174,12 +174,37 @@ class C3mrSyncController extends Controller
                 if ($failCount > 0 && $successCount > 0) $overallStatus = 'warning';
                 elseif ($failCount > 0 && $successCount === 0) $overallStatus = 'error';
 
+                $dbTotalCust    = Customer::count();
+                $sourceRows     = $dataAll['source_rows'] ?? 0;
+                $isConsistent   = ($dbTotalCust > 0 && $sourceRows > 0 && ($dbTotalCust >= ($sourceRows * 0.8)));
+                $consistencyMsg = $isConsistent
+                    ? "Data master pelanggan konsisten ({$dbTotalCust} pelanggan di database dari {$sourceRows} baris sheet)"
+                    : "Perhatian: Terdapat perbedaan data. Sheet DATA ALL: {$sourceRows} baris, Database: {$dbTotalCust} pelanggan.";
+
+                if (!$isConsistent && $sourceRows > 1000 && $dbTotalCust < 1000) {
+                    $overallStatus = 'warning';
+                }
+
+                $dataQuality = [
+                    'source_sheet_rows'        => $sourceRows,
+                    'database_total_customers' => $dbTotalCust,
+                    'is_consistent'            => $isConsistent,
+                    'consistency_message'      => $consistencyMsg,
+                    'created_customers'        => $dataAll['created'] ?? 0,
+                    'updated_customers'        => $dataAll['updated'] ?? 0,
+                    'duplicate_in_source'      => $dataAll['duplicates'] ?? 0,
+                    'invalid_skipped'          => $dataAll['skipped'] ?? 0,
+                    'valid_phones_count'       => Customer::whereNotNull('no_hp_terbaru')->where('no_hp_terbaru', '!=', '')->count(),
+                ];
+
                 $duration      = round(microtime(true) - $startTime, 2);
                 $formattedDate = C3mrSyncService::formatIndonesianDate($syncTimestamp);
 
                 // Simpan riwayat sync ke Setting
                 $activeUrl = C3mrSyncService::getActiveSpreadsheetUrl();
                 $setting   = Setting::first();
+                $savePayload = array_merge($results, ['_data_quality' => $dataQuality]);
+
                 if (!$setting) {
                     Setting::create([
                         'c3mr_url'         => $activeUrl,
@@ -187,20 +212,20 @@ class C3mrSyncController extends Controller
                         'viseepro_url'     => $activeUrl,
                         'last_sync_at'     => $syncTimestamp,
                         'last_sync_status' => $overallStatus,
-                        'last_sync_result' => $results,
+                        'last_sync_result' => $savePayload,
                     ]);
                 } else {
                     $setting->update([
                         'c3mr_url'         => $setting->c3mr_url ?: $activeUrl,
                         'last_sync_at'     => $syncTimestamp,
                         'last_sync_status' => $overallStatus,
-                        'last_sync_result' => $results,
+                        'last_sync_result' => $savePayload,
                     ]);
                 }
 
                 $statusLabel = $overallStatus === 'success'
                     ? 'Sinkronisasi berhasil'
-                    : ($overallStatus === 'warning' ? 'Sinkronisasi selesai dengan beberapa masalah' : 'Sinkronisasi gagal');
+                    : ($overallStatus === 'warning' ? 'Sinkronisasi selesai dengan catatan kualitas data' : 'Sinkronisasi gagal');
 
                 $finalPayload = [
                     'success'              => $overallStatus !== 'error',
@@ -213,10 +238,11 @@ class C3mrSyncController extends Controller
                     'duration_seconds'     => $duration,
                     'last_sync_at'         => $syncTimestamp->format('Y-m-d H:i:s'),
                     'last_sync_formatted'  => $formattedDate,
+                    'data_quality'         => $dataQuality,
                     'details'              => $results,
                 ];
 
-                $send('progress', ['step' => 'finish', 'message' => "Selesai dalam {$duration}s", 'pct' => 100]);
+                $send('progress', ['step' => 'finish', 'message' => "Selesai dalam {$duration}s ({$dbTotalCust} pelanggan di database)", 'pct' => 100]);
                 $send('complete', $finalPayload);
 
             } catch (\Throwable $e) {

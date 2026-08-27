@@ -22,6 +22,9 @@ class DashboardController extends Controller
         $totalCaring    = CaringLog::count();
         $totalPiutang   = Customer::sum('saldo_piutang');
         $totalPaid      = CaringLog::where('status_bayar', 'PAID')->count();
+        $totalOutstanding = Customer::where('saldo_piutang', '>', 0)->count();
+        $validPhones    = Customer::whereNotNull('no_hp_terbaru')->where('no_hp_terbaru', '!=', '')->count();
+        $missingPhones  = max($totalCustomers - $validPhones, 0);
 
         $todayVisits    = Visit::whereDate('tanggal_input', today())->count();
         $todayPTP       = Visit::whereDate('tanggal_input', today())->where('is_ptp', true)->count();
@@ -104,6 +107,9 @@ class DashboardController extends Controller
             'totalCaring',
             'totalPiutang',
             'totalPaid',
+            'totalOutstanding',
+            'validPhones',
+            'missingPhones',
             'todayVisits',
             'todayPTP',
             'criticalCount',

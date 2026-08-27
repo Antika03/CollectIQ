@@ -383,28 +383,47 @@ class C3mrSyncService
 
         try {
             $res = CustomerSyncService::syncFromDataAllCsv($csvPath);
-            CustomerPhoneEnricher::enrichPhoneNumbers();
+            $enrichRes = CustomerPhoneEnricher::enrichPhoneNumbers();
 
-            Log::info("[C3MR Sync] DATA ALL selesai diproses: {$res['total_rows_processed']} baris (Updated: {$res['updated_customers']}, Created: {$res['created_customers']}, Total Customers: {$res['total_customers_now']})");
+            $totalSourceRows   = $res['total_source_rows'] ?? 0;
+            $processedRows     = $res['total_rows_processed'] ?? 0;
+            $createdCount      = $res['created_customers'] ?? 0;
+            $updatedCount      = $res['updated_customers'] ?? 0;
+            $duplicatesCount   = $res['duplicate_in_source'] ?? 0;
+            $skippedCount      = $res['invalid_skipped'] ?? 0;
+            $totalCustomersNow = $res['total_customers_now'] ?? Customer::count();
+            $validPhonesNow    = $enrichRes['valid_phone_count'] ?? Customer::whereNotNull('no_hp_terbaru')->where('no_hp_terbaru', '!=', '')->count();
+
+            Log::info("[C3MR Sync] DATA ALL selesai diproses: {$processedRows} baris valid dari {$totalSourceRows} baris sumber (Created: {$createdCount}, Updated: {$updatedCount}, Duplicates: {$duplicatesCount}, Skipped: {$skippedCount}, Total Customers: {$totalCustomersNow})");
 
             return [
-                'success' => true,
-                'label'   => 'C3MR Master Data (DATA ALL)',
-                'count'   => $res['total_rows_processed'] ?? 0,
-                'created' => $res['created_customers'] ?? 0,
-                'updated' => $res['updated_customers'] ?? 0,
-                'total'   => $res['total_customers_now'] ?? Customer::count(),
-                'message' => "{$res['total_rows_processed']} master data diproses ({$res['total_customers_now']} pelanggan terdaftar)",
-                'error'   => null,
+                'success'             => true,
+                'label'               => 'C3MR Master Data (DATA ALL)',
+                'count'               => $processedRows,
+                'source_rows'         => $totalSourceRows,
+                'created'             => $createdCount,
+                'updated'             => $updatedCount,
+                'duplicates'          => $duplicatesCount,
+                'skipped'             => $skippedCount,
+                'total'               => $totalCustomersNow,
+                'valid_phones'        => $validPhonesNow,
+                'message'             => "{$processedRows} master pelanggan diproses ({$totalCustomersNow} terdaftar di database, {$validPhonesNow} nomor HP valid)",
+                'error'               => null,
             ];
         } catch (\Throwable $e) {
             Log::error('[C3MR Sync] DATA ALL sync error: ' . $e->getMessage());
             return [
-                'success' => false,
-                'label'   => 'C3MR Master Data (DATA ALL)',
-                'count'   => 0,
-                'message' => 'Gagal memproses Sheet DATA ALL: ' . $e->getMessage(),
-                'error'   => $e->getMessage(),
+                'success'     => false,
+                'label'       => 'C3MR Master Data (DATA ALL)',
+                'count'       => 0,
+                'source_rows' => 0,
+                'created'     => 0,
+                'updated'     => 0,
+                'duplicates'  => 0,
+                'skipped'     => 0,
+                'total'       => Customer::count(),
+                'message'     => 'Gagal memproses Sheet DATA ALL: ' . $e->getMessage(),
+                'error'       => $e->getMessage(),
             ];
         }
     }
@@ -592,19 +611,19 @@ class C3mrSyncService
             Log::warning('[C3MR Sync] Download master workbook warning: ' . $e->getMessage());
         }
 
-        // Jalankan seluruh proses sinkronisasi
+        // Jalankan seluruh proses sinkronisasi dengan DATA ALL sebagai FONDASI UTAMA
         $results = [
+            'data_all'    => self::syncDataAll(),
             'report_prq'  => self::syncReportPrq(),
             'viseepro'    => self::syncViseepro(),
-            'data_all'    => self::syncDataAll(),
             'caring'      => self::syncCaring(),
             'performance' => self::syncPerformance(),
             'ar_agents'   => self::consolidateAr(),
         ];
 
         // Evaluasi status keseluruhan
-        $successCount = 0;
-        $failCount = 0;
+        $successCount   = 0;
+        $failCount      = 0;
         $totalProcessed = 0;
 
         foreach ($results as $key => $res) {
@@ -623,12 +642,39 @@ class C3mrSyncService
             $overallStatus = 'error';
         }
 
+        // Data Quality & Consistency Check
+        $dataAllStats   = $results['data_all'] ?? [];
+        $sourceRows     = $dataAllStats['source_rows'] ?? 0;
+        $dbTotalCust    = Customer::count();
+        $isConsistent   = ($dbTotalCust > 0 && $sourceRows > 0 && ($dbTotalCust >= ($sourceRows * 0.8)));
+        $consistencyMsg = $isConsistent
+            ? "Data master pelanggan konsisten ({$dbTotalCust} pelanggan di database dari {$sourceRows} baris sheet)"
+            : "Perhatian: Terdapat perbedaan data. Sheet DATA ALL: {$sourceRows} baris, Database: {$dbTotalCust} pelanggan.";
+
+        if (!$isConsistent && $sourceRows > 1000 && $dbTotalCust < 1000) {
+            $overallStatus = 'warning';
+        }
+
+        $dataQuality = [
+            'source_sheet_rows'        => $sourceRows,
+            'database_total_customers' => $dbTotalCust,
+            'is_consistent'            => $isConsistent,
+            'consistency_message'      => $consistencyMsg,
+            'created_customers'        => $dataAllStats['created'] ?? 0,
+            'updated_customers'        => $dataAllStats['updated'] ?? 0,
+            'duplicate_in_source'      => $dataAllStats['duplicates'] ?? 0,
+            'invalid_skipped'          => $dataAllStats['skipped'] ?? 0,
+            'valid_phones_count'       => Customer::whereNotNull('no_hp_terbaru')->where('no_hp_terbaru', '!=', '')->count(),
+        ];
+
         // Format waktu lokal Indonesia
         $formattedDate = self::formatIndonesianDate($syncTimestamp);
 
         // Simpan riwayat Last Sync ke database Setting
         $activeUrl = self::getActiveSpreadsheetUrl();
         $setting = Setting::first();
+        $savePayload = array_merge($results, ['_data_quality' => $dataQuality]);
+
         if (!$setting) {
             $setting = Setting::create([
                 'c3mr_url'         => $activeUrl,
@@ -636,28 +682,30 @@ class C3mrSyncService
                 'viseepro_url'     => $activeUrl,
                 'last_sync_at'     => $syncTimestamp,
                 'last_sync_status' => $overallStatus,
-                'last_sync_result' => $results,
+                'last_sync_result' => $savePayload,
             ]);
         } else {
             $setting->update([
                 'c3mr_url'         => $setting->c3mr_url ?: $activeUrl,
                 'last_sync_at'     => $syncTimestamp,
                 'last_sync_status' => $overallStatus,
-                'last_sync_result' => $results,
+                'last_sync_result' => $savePayload,
             ]);
         }
 
         $duration = round(microtime(true) - $startTime, 2);
 
-        Log::info("[C3MR Sync] MASTER SYNC SELESAI ({$duration}s). Status: {$overallStatus}, Total Processed: {$totalProcessed}, Success: {$successCount}/" . count($results));
+        Log::info("[C3MR Sync] MASTER SYNC SELESAI ({$duration}s). Status: {$overallStatus}, Total Processed: {$totalProcessed}, DB Customers: {$dbTotalCust}, Success: {$successCount}/" . count($results));
         Log::info('====================================================');
+
+        $statusLabel = $overallStatus === 'success'
+            ? 'Sinkronisasi berhasil'
+            : ($overallStatus === 'warning' ? 'Sinkronisasi selesai dengan catatan kualitas data' : 'Sinkronisasi gagal');
 
         return [
             'success'              => $overallStatus !== 'error',
             'status'               => $overallStatus,
-            'status_label'         => $overallStatus === 'success' 
-                                        ? 'Sinkronisasi berhasil' 
-                                        : ($overallStatus === 'warning' ? 'Sinkronisasi selesai dengan beberapa masalah' : 'Sinkronisasi gagal'),
+            'status_label'         => $statusLabel,
             'total_sources'        => count($results),
             'success_sources'      => $successCount,
             'failed_sources'       => $failCount,
@@ -665,6 +713,7 @@ class C3mrSyncService
             'duration_seconds'     => $duration,
             'last_sync_at'         => $syncTimestamp->format('Y-m-d H:i:s'),
             'last_sync_formatted'  => $formattedDate,
+            'data_quality'         => $dataQuality,
             'details'              => $results,
         ];
     }
