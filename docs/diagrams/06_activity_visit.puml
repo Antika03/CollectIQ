@@ -1,0 +1,80 @@
+@startuml 06_activity_visit
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam activity {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    DiamondBackgroundColor #FEF3C7
+    DiamondBorderColor #D97706
+    DiamondFontColor #78350F
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (GET /visits, GET /visits/{id}, GET /visits/{id}/photo, GET /visits/export)
+' 2. app/Http/Controllers/VisitController.php
+' 3. resources/views/visits/index.blade.php, resources/views/visits/show.blade.php
+' ==============================================================================
+
+|#EFF6FF|Pengguna|
+|#FEF3C7|VisitController|
+|#F0FDF4|Database MySQL|
+|#FAFAFA|Google Drive (External)|
+
+|Pengguna|
+start
+:Buka menu "Visits" (GET /visits);
+
+|VisitController|
+:Ambil parameter filter (search, ar_agent_id, date_from, date_to, hasil_visit);
+|Database MySQL|
+:Query tabel visits dengan relasi customer & arAgent;
+:Hitung KPI (Total Visit, Visit Hari Ini, Total PTP, Contacted/Not Contacted);
+|VisitController|
+:Render view visits/index dengan data paginasi & chart trend 14 hari;
+
+|Pengguna|
+:Lihat daftar kunjungan lapangan;
+
+if (Pilih aksi?) then (Klik Detail Kunjungan)
+    :Klik tombol detail pada baris kunjungan (GET /visits/{id});
+    |VisitController|
+    |Database MySQL|
+    :Query data visit spesifik berserta relasi Customer, ArAgent, dan riwayat visit lainnya;
+    |VisitController|
+    :Render view visits/show;
+    |Pengguna|
+    :Lihat detail lengkap kunjungan & riwayat interaksi;
+
+    if (Kunjungan memiliki foto bukti?) then (Ya)
+        :Klik thumbnail foto untuk memperbesar (GET /visits/{id}/photo);
+        |VisitController|
+        :Ekstrak Google Drive File ID dari foto_url;
+        |Google Drive (External)|
+        :Kirim request HTTP stream gambar ke Google Drive (uc?id=FILE_ID);
+        :Kirim response stream file gambar;
+        |VisitController|
+        :Proxy stream gambar ke browser dengan Content-Type image;
+        |Pengguna|
+        :Lihat foto bukti kunjungan asli lapangan;
+    else (Tidak ada foto)
+        :Tampilkan placeholder ikon tanpa foto;
+    endif
+
+else (Export Data)
+    :Klik tombol "Export CSV/Excel" (GET /visits/export);
+    |VisitController|
+    |Database MySQL|
+    :Query seluruh data kunjungan sesuai filter aktif;
+    |VisitController|
+    :Generate file spreadsheet via VisitsExport (Laravel Excel);
+    |Pengguna|
+    :Unduh file laporan kunjungan;
+endif
+
+stop
+
+@enduml

@@ -1,0 +1,69 @@
+@startuml 09_sequence_visit_detail
+!theme plain
+autonumber
+skinparam shadowing false
+skinparam roundcorner 5
+
+skinparam participant {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+}
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::get('/visits/{visit}', [VisitController::class, 'show']), Route::get('/visits/{visit}/photo', [VisitController::class, 'photo']))
+' 2. app/Http/Controllers/VisitController.php (show, photo)
+' 3. app/Models/Visit.php (drive_file_id accessor)
+' 4. resources/views/visits/show.blade.php
+' ==============================================================================
+
+actor "Pengguna" as User
+participant "Browser" as Browser
+participant "VisitController" as Controller
+database "MySQL Database" as DB
+participant "Google Drive" as GDrive <<External Storage>>
+
+User -> Browser: Klik tombol "Detail" pada baris kunjungan
+activate Browser
+Browser -> Controller: GET /visits/{id}
+activate Controller
+
+Controller -> DB: Visit::with(['customer', 'arAgent'])->findOrFail($id)
+activate DB
+DB --> Controller: Return model Visit berserta relasi Customer & ArAgent
+deactivate DB
+
+Controller --> Browser: Render view visits/show.blade.php (termasuk tag <img src="/visits/{id}/photo">)
+deactivate Controller
+
+== Alur Pengambilan Foto Bukti (Proxy Stream) ==
+
+Browser -> Controller: GET /visits/{id}/photo
+activate Controller
+
+Controller -> Controller: Ekstrak Google Drive File ID dari foto_url ($visit->drive_file_id)
+
+alt File ID Valid
+    Controller -> GDrive: HTTP GET https://drive.google.com/uc?id={fileId}&export=view
+    activate GDrive
+    GDrive --> Controller: Stream binary data foto (image/jpeg / image/png)
+    deactivate GDrive
+    Controller --> Browser: HTTP 200 Response dengan Content-Type gambar
+else Foto URL Kosong / File ID Tidak Ditemukan
+    Controller --> Browser: HTTP 404 Response / Placeholder No-Photo
+end
+deactivate Controller
+
+Browser --> User: Tampilkan halaman detail kunjungan lengkap dengan foto bukti asli lapangan
+deactivate Browser
+
+@enduml

@@ -1,0 +1,67 @@
+@startuml 13_deployment_diagram
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 5
+
+skinparam node {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+}
+
+skinparam component {
+    BackgroundColor #F8FAFC
+    BorderColor #64748B
+    FontColor #0F172A
+    FontSize 10
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. Deployment Host: https://collectiq.up.railway.app/ (Railway PaaS)
+' 2. bootstrap/app.php (trustProxies('*'))
+' 3. config/database.php (MySQL Connection)
+' 4. External Services: Google Sheets & Google Drive
+' ==============================================================================
+
+node "Perangkat Pengguna (Client Tier)" as ClientNode #EFF6FF {
+    node "Web Browser (Chrome / Edge / Firefox)" {
+        component "CollectIQ Web App UI\n(HTML5, Vanilla CSS, JS Fetch)" as WebClient
+    }
+}
+
+node "Railway.app Cloud Platform (PaaS Tier)" as RailwayPlatform #F8FAFC {
+    node "Railway Edge / Reverse Proxy (Nginx)" as ProxyNode #FEF3C7 {
+        component "SSL/TLS Termination\n(HTTPS Port 443 -> HTTP Port 8080)\nX-Forwarded-Proto: https" as Proxy
+    }
+
+    node "Application Container (Linux Docker)" as AppNode #FFF5F5 {
+        component "PHP 8.2 Runtime Engine" as PHP
+        component "Laravel 12 Framework\n(CollectIQ Web Core)" as LaravelCore
+        folder "Ephemeral Local Storage\n(storage/app/ temporary CSV files)" as Storage
+    }
+
+    node "Database Container (MySQL Service)" as DBNode #F0FDF4 {
+        database "MySQL 8.0 DBMS\n(Database: collectiq)" as MySQL
+    }
+}
+
+node "Google Cloud Infrastructure (External Tier)" as GoogleCloud #FAFAFA {
+    node "Google Workspace Services" {
+        component "Google Spreadsheet C3MR\n(docs.google.com/spreadsheets)" as GSheet
+        component "Google Drive Storage\n(drive.google.com/file/d/)" as GDrive
+    }
+}
+
+' Alur Komunikasi Deployment
+WebClient -- Proxy : HTTPS (Port 443)\nTLS Encrypted
+Proxy -- PHP : HTTP (Internal Port 8080)\nReverse Proxy Pass
+PHP -- LaravelCore : Executes
+LaravelCore -- Storage : Local File I/O
+LaravelCore -- MySQL : TCP/IP (MySQL Protocol Port 3306)
+
+LaravelCore ..> GSheet : HTTPS GET (CSV Export Endpoint)
+LaravelCore ..> GDrive : HTTPS GET (Photo Proxy Stream)
+
+@enduml

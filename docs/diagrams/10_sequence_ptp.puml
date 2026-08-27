@@ -1,0 +1,68 @@
+@startuml 10_sequence_ptp
+!theme plain
+autonumber
+skinparam shadowing false
+skinparam roundcorner 5
+
+skinparam participant {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+}
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::get('/ptp-monitoring', [PtpMonitoringController::class, 'index']), Route::get('/ptp-monitoring/export', [PtpMonitoringController::class, 'export']))
+' 2. app/Http/Controllers/PtpMonitoringController.php
+' 3. resources/views/ptp-monitoring/index.blade.php
+' ==============================================================================
+
+actor "Tim Collection / AR Agent" as User
+participant "Browser" as Browser
+participant "PtpMonitoringController" as Controller
+database "MySQL Database" as DB
+
+User -> Browser: Buka menu "PTP Monitoring" (opsional isi filter tanggal / AR Agent)
+activate Browser
+Browser -> Controller: GET /ptp-monitoring?search=...&ar_agent_id=...&date_from=...
+activate Controller
+
+Controller -> DB: Visit::with(['customer', 'arAgent'])\n  ->where('is_ptp', true)\n  ->latest('tanggal_input')\n  ->paginate(20)
+activate DB
+DB --> Controller: Return 20 baris data PTP paginated
+
+Controller -> DB: Hitung KPI (totalPtp, todayPtp, ptpWithPhoto, ptpRate)
+DB --> Controller: Return agregasi KPI
+
+Controller -> DB: ArAgent::orderBy('name')->get()
+DB --> Controller: Return daftar AR Agent untuk dropdown filter
+deactivate DB
+
+Controller --> Browser: Render view ptp-monitoring/index.blade.php (Data PTP, KPI, Filter Form)
+deactivate Controller
+Browser --> User: Tampilkan dashboard PTP Monitoring
+
+== Alur Ekspor Data PTP ke CSV ==
+
+opt Pengguna Mengekspor Data
+    User -> Browser: Klik tombol "Export CSV"
+    Browser -> Controller: GET /ptp-monitoring/export (dengan query filter)
+    activate Controller
+    Controller -> DB: Query seluruh data PTP sesuai filter aktif
+    activate DB
+    DB --> Controller: Return kumpulan data PTP
+    deactivate DB
+    Controller --> Browser: Stream response text/csv (UTF-8 BOM Header: attachment; filename="export-ptp-*.csv")
+    deactivate Controller
+    Browser --> User: Download file CSV ke komputer lokal
+end
+
+@enduml

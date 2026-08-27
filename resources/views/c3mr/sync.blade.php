@@ -150,13 +150,20 @@
 
     {{-- LIVE SYNC STATUS & PROGRESS INDICATOR --}}
     <div id="syncLiveStatus" class="mt-4 pt-3" style="display:none; border-top:1px dashed #FCA5A5;">
-        <div class="d-flex align-items-center gap-3">
-            <div class="spinner-border spinner-border-sm text-danger" role="status"></div>
-            <div>
-                <strong style="color:var(--primary); font-size:13.5px;">Sinkronisasi data C3MR sedang berlangsung...</strong>
-                <div style="font-size:12px; color:var(--ink-500);">Mengunduh data terbaru dari Spreadsheet C3MR dan memperbarui database. Mohon tunggu...</div>
+        <div class="d-flex align-items-start gap-3 mb-3">
+            <div class="spinner-border spinner-border-sm text-danger mt-1" role="status" id="syncSpinner"></div>
+            <div style="flex:1;">
+                <strong style="color:var(--primary); font-size:13.5px;" id="syncProgressLabel">Memulai sinkronisasi...</strong>
+                <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;" id="syncProgressSub">Proses ini membutuhkan waktu 2–3 menit. Halaman tidak perlu di-refresh.</div>
             </div>
         </div>
+        {{-- Progress bar --}}
+        <div style="background:#FEE2E2; border-radius:8px; overflow:hidden; height:8px; margin-bottom:6px;">
+            <div id="syncProgressBar" style="height:100%; background:linear-gradient(90deg,#E2001A,#F59E0B); border-radius:8px; width:3%; transition:width .4s ease;"></div>
+        </div>
+        <div style="font-size:11px; color:var(--ink-400); text-align:right;" id="syncProgressPct">3%</div>
+        {{-- Live step log --}}
+        <div id="syncStepLog" style="margin-top:10px; max-height:110px; overflow-y:auto; background:#FFF5F5; border:1px solid #FCA5A5; border-radius:8px; padding:8px 12px; font-size:11.5px; color:#7F1D1D; font-family:monospace; line-height:1.6;"></div>
     </div>
 </div>
 
@@ -400,182 +407,237 @@
 
 @push('scripts')
 <script>
-async function triggerMasterSync() {
-    const btn = document.getElementById('btnSyncMaster');
-    const icon = document.getElementById('masterSyncIcon');
-    const label = document.getElementById('masterSyncLabel');
-    const liveStatus = document.getElementById('syncLiveStatus');
-    const progressBar = document.getElementById('topProgressBar');
-    const errorBanner = document.getElementById('syncErrorBanner');
+// ─── SSE-based Sync (Server-Sent Events) ────────────────────────────────────
+// Menggunakan streaming response.body agar tidak timeout di Railway.
+// Server mengirim progress real-time; browser memperbarui UI tanpa blocking.
 
-    // Sembunyikan error sebelumnya jika ada
-    if (errorBanner) {
-        errorBanner.style.display = 'none';
-    }
+function triggerMasterSync() {
+    const btn          = document.getElementById('btnSyncMaster');
+    const icon         = document.getElementById('masterSyncIcon');
+    const label        = document.getElementById('masterSyncLabel');
+    const liveStatus   = document.getElementById('syncLiveStatus');
+    const topBar       = document.getElementById('topProgressBar');
+    const errorBanner  = document.getElementById('syncErrorBanner');
+    const progressBar  = document.getElementById('syncProgressBar');
+    const progressPct  = document.getElementById('syncProgressPct');
+    const progressLbl  = document.getElementById('syncProgressLabel');
+    const stepLog      = document.getElementById('syncStepLog');
 
-    // UI Loading State (mengikuti proses sebenarnya tanpa fake timer)
-    btn.disabled = true;
-    icon.classList.add('spinning');
-    label.innerText = 'Sinkronisasi data C3MR...';
-    liveStatus.style.display = 'block';
-    
-    if (progressBar) {
-        progressBar.className = 'loading';
-    }
+    const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
 
-    // Ambil CSRF Token
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') 
-        || '{{ csrf_token() }}';
-
-    // Gunakan relative path /c3mr/sync/all agar tidak terjadi masalah port mismatch
-    const syncEndpoint = '/c3mr/sync/all';
-
-    try {
-        const response = await fetch(syncEndpoint, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': csrfToken,
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({
-                _token: csrfToken
-            })
-        });
-
-        const contentType = response.headers.get('content-type') || '';
-        let data = {};
-
-        if (contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            const textResp = await response.text();
-            throw new Error(`Server mengembalikan respon tidak valid (HTTP ${response.status}). ${textResp.slice(0, 150)}`);
-        }
-
-        if (!response.ok) {
-            throw new Error(data.message || `Sinkronisasi gagal dengan kode status HTTP ${response.status}`);
-        }
-
-        // Update Timestamp Text
-        if (data.last_sync_formatted) {
-            const lastSyncEl = document.getElementById('lastSyncText');
-            const resultTsEl = document.getElementById('resultTimestampText');
-            if (lastSyncEl) lastSyncEl.innerText = data.last_sync_formatted;
-            if (resultTsEl) resultTsEl.innerText = data.last_sync_formatted;
-        }
-
-        // Update Status Box
-        const statusBox = document.getElementById('syncResultContainer');
-        if (statusBox) statusBox.style.display = 'block';
-
-        const isSuccess = data.status === 'success';
-        const isWarning = data.status === 'warning';
-
-        const statusIconEl = document.getElementById('resultStatusIcon');
-        const statusTitleEl = document.getElementById('resultStatusTitle');
-
-        if (statusIconEl && statusTitleEl) {
-            if (isSuccess) {
-                statusIconEl.innerHTML = '<i class="bi bi-check-circle-fill fs-5" style="color:var(--success);"></i>';
-                statusTitleEl.innerText = '✓ ' + (data.status_label || 'Sinkronisasi berhasil');
-            } else if (isWarning) {
-                statusIconEl.innerHTML = '<i class="bi bi-exclamation-triangle-fill fs-5" style="color:var(--warning);"></i>';
-                statusTitleEl.innerText = '⚠ ' + (data.status_label || 'Sinkronisasi selesai dengan beberapa masalah');
-            } else {
-                statusIconEl.innerHTML = '<i class="bi bi-x-circle-fill fs-5" style="color:var(--danger);"></i>';
-                statusTitleEl.innerText = '✕ ' + (data.status_label || 'Sinkronisasi gagal');
-            }
-        }
-
-        if (data.total_rows_processed !== undefined) {
-            const countProcessedEl = document.getElementById('resultProcessedCount');
-            if (countProcessedEl) {
-                countProcessedEl.innerText = Number(data.total_rows_processed).toLocaleString('id-ID');
-            }
-        }
-
-        // Update details per source
-        if (data.details) {
-            const d = data.details;
-            if (d.report_prq) updateSourceCard('report_prq', d.report_prq);
-            if (d.viseepro) updateSourceCard('viseepro', d.viseepro);
-            if (d.data_all) updateSourceCard('data_all', d.data_all);
-            if (d.caring) updateSourceCard('caring', d.caring);
-            if (d.performance) updateSourceCard('performance', d.performance);
-            if (d.ar_agents) updateSourceCard('ar_agents', d.ar_agents);
-        }
-
-        // Update Master KPI numbers jika ada update total
-        if (data.details?.data_all?.total) {
-            const kpiCust = document.getElementById('kpiCustomers');
-            if (kpiCust) kpiCust.innerText = Number(data.details.data_all.total).toLocaleString('id-ID');
-        }
-        if (data.details?.caring?.total) {
-            const kpiCar = document.getElementById('kpiCaring');
-            if (kpiCar) kpiCar.innerText = Number(data.details.caring.total).toLocaleString('id-ID');
-        }
-
-        // Scroll to results smoothly
-        if (statusBox) {
-            statusBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        }
-
-    } catch (err) {
-        console.error('C3MR Sync Error:', err);
-
-        // Tampilkan Error Banner yang informatif di halaman
-        if (errorBanner) {
-            const titleEl = document.getElementById('errorBannerTitle');
-            const msgEl = document.getElementById('errorBannerMessage');
-            const detEl = document.getElementById('errorBannerDetails');
-
-            let userMsg = err.message || 'Terjadi kesalahan tidak terduga';
-            if (err.name === 'TypeError' && err.message.includes('fetch')) {
-                userMsg = 'Gagal menghubungi server aplikasi. Pastikan koneksi web server aktif dan dapat diakses.';
-            }
-
-            if (titleEl) titleEl.innerText = 'Sinkronisasi Gagal';
-            if (msgEl) msgEl.innerText = userMsg;
-            if (detEl) {
-                detEl.innerText = `Detail: ${err.message}`;
-                detEl.style.display = 'block';
-            }
-            errorBanner.style.display = 'flex';
-            errorBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else {
-            alert('Gagal melakukan sinkronisasi: ' + err.message);
-        }
-    } finally {
-        // Reset UI State
+    const resetUI = () => {
         btn.disabled = false;
         icon.classList.remove('spinning');
         label.innerText = 'Sync Data C3MR';
         liveStatus.style.display = 'none';
-        
-        if (progressBar) {
-            progressBar.className = 'finish';
-            setTimeout(() => { progressBar.className = ''; }, 300);
+        if (topBar) { topBar.className = 'finish'; setTimeout(() => { topBar.className = ''; }, 300); }
+    };
+
+    const addLog = (msg) => {
+        if (!stepLog) return;
+        const line = document.createElement('div');
+        const ts   = new Date().toLocaleTimeString('id-ID');
+        line.textContent = `[${ts}] ${msg}`;
+        stepLog.appendChild(line);
+        stepLog.scrollTop = stepLog.scrollHeight;
+    };
+
+    const setProgress = (pct, msg) => {
+        if (progressBar) progressBar.style.width = Math.min(pct, 100) + '%';
+        if (progressPct) progressPct.textContent = Math.min(pct, 100) + '%';
+        if (progressLbl && msg) progressLbl.textContent = msg;
+        addLog(msg || '');
+    };
+
+    const showError = (msg, detail) => {
+        if (!errorBanner) { alert('Gagal: ' + msg); return; }
+        const titleEl = document.getElementById('errorBannerTitle');
+        const msgEl   = document.getElementById('errorBannerMessage');
+        const detEl   = document.getElementById('errorBannerDetails');
+        if (titleEl) titleEl.innerText = 'Sinkronisasi Gagal';
+        if (msgEl)   msgEl.innerText   = msg || 'Terjadi kesalahan tidak terduga.';
+        if (detEl && detail) { detEl.textContent = detail; detEl.style.display = 'block'; }
+        else if (detEl) detEl.style.display = 'none';
+        errorBanner.style.display = 'flex';
+        errorBanner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    };
+
+    // ── Init UI ──
+    if (errorBanner) errorBanner.style.display = 'none';
+    btn.disabled = true;
+    icon.classList.add('spinning');
+    label.innerText = 'Menyinkronkan...';
+    liveStatus.style.display = 'block';
+    if (stepLog) stepLog.innerHTML = '';
+    if (topBar) topBar.className = 'loading';
+    setProgress(3, 'Menghubungi server...');
+
+    // ── POST dengan Accept: text/event-stream → server returns SSE stream ──
+    fetch('/c3mr/sync/all', {
+        method: 'POST',
+        headers: {
+            'Accept': 'text/event-stream',
+            'X-CSRF-TOKEN': csrf,
+            'X-Requested-With': 'XMLHttpRequest',
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ _token: csrf }),
+    }).then(response => {
+        if (!response.ok && !response.body) {
+            return response.text().then(t => {
+                throw new Error(`Server error HTTP ${response.status}: ${t.slice(0, 200)}`);
+            });
         }
-    }
+
+        // Baca SSE stream via response.body reader
+        const reader  = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer    = '';
+
+        const processChunk = (chunk) => {
+            buffer += chunk;
+            const blocks = buffer.split('\n\n');
+            buffer = blocks.pop(); // simpan yang belum selesai
+
+            for (const block of blocks) {
+                if (!block.trim()) continue;
+                let eventName = 'message', dataStr = '';
+                for (const line of block.split('\n')) {
+                    if (line.startsWith('event: ')) eventName = line.slice(7).trim();
+                    if (line.startsWith('data: '))  dataStr   = line.slice(6).trim();
+                }
+                if (!dataStr) continue;
+                let data;
+                try { data = JSON.parse(dataStr); } catch { continue; }
+
+                if (eventName === 'progress') {
+                    setProgress(data.pct || 0, data.message);
+                } else if (eventName === 'complete') {
+                    handleSyncComplete(data);
+                } else if (eventName === 'error') {
+                    showError(data.message, data.file ? 'File: ' + data.file : null);
+                    resetUI();
+                }
+            }
+        };
+
+        const pump = () => reader.read().then(({ done, value }) => {
+            if (done) { resetUI(); return; }
+            processChunk(decoder.decode(value, { stream: true }));
+            pump();
+        }).catch(err => {
+            console.warn('Stream read error:', err);
+            resetUI();
+        });
+
+        pump();
+
+    }).catch(err => {
+        console.error('C3MR Sync fetch error:', err);
+        let msg = err.message || 'Terjadi kesalahan tidak terduga';
+        if (msg.toLowerCase().includes('wsarecv') || msg.toLowerCase().includes('aborted') || msg.toLowerCase().includes('connection')) {
+            msg = 'Koneksi ke Google Spreadsheet terputus saat mengunduh data. Coba lagi — proses akan menggunakan data cache jika tersedia.';
+        } else if (msg.includes('fetch') || msg.includes('network')) {
+            msg = 'Gagal menghubungi server. Pastikan koneksi internet aktif.';
+        }
+        showError(msg, 'Detail teknis: ' + err.message);
+        resetUI();
+    });
+}
+
+function handleSyncComplete(data) {
+    const liveStatus  = document.getElementById('syncLiveStatus');
+    const statusBox   = document.getElementById('syncResultContainer');
+    const errorBanner = document.getElementById('syncErrorBanner');
+    const progressBar = document.getElementById('syncProgressBar');
+    const topBar      = document.getElementById('topProgressBar');
+
+    if (progressBar) progressBar.style.width = '100%';
+    const pctEl = document.getElementById('syncProgressPct');
+    if (pctEl) pctEl.textContent = '100%';
+    const lblEl = document.getElementById('syncProgressLabel');
+    if (lblEl) lblEl.textContent = data.status_label || 'Selesai';
+
+    setTimeout(() => {
+        const btn = document.getElementById('btnSyncMaster');
+        const icon = document.getElementById('masterSyncIcon');
+        const label = document.getElementById('masterSyncLabel');
+        if (btn)   btn.disabled = false;
+        if (icon)  icon.classList.remove('spinning');
+        if (label) label.innerText = 'Sync Data C3MR';
+        if (liveStatus) liveStatus.style.display = 'none';
+        if (topBar) { topBar.className = 'finish'; setTimeout(() => { topBar.className = ''; }, 300); }
+
+        if (statusBox) statusBox.style.display = 'block';
+
+        // Timestamp
+        if (data.last_sync_formatted) {
+            ['lastSyncText','resultTimestampText'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.innerText = data.last_sync_formatted;
+            });
+        }
+
+        // Status icon & title
+        const isSuccess = data.status === 'success';
+        const isWarning = data.status === 'warning';
+        const iconEl    = document.getElementById('resultStatusIcon');
+        const titleEl   = document.getElementById('resultStatusTitle');
+        if (iconEl) {
+            iconEl.innerHTML = isSuccess
+                ? '<i class="bi bi-check-circle-fill fs-5" style="color:var(--success);"></i>'
+                : (isWarning
+                    ? '<i class="bi bi-exclamation-triangle-fill fs-5" style="color:var(--warning);"></i>'
+                    : '<i class="bi bi-x-circle-fill fs-5" style="color:var(--danger);"></i>');
+        }
+        if (titleEl) {
+            const pfx = isSuccess ? '✓ ' : (isWarning ? '⚠ ' : '✕ ');
+            titleEl.innerText = pfx + (data.status_label || 'Selesai');
+        }
+
+        // Total processed
+        const cntEl = document.getElementById('resultProcessedCount');
+        if (cntEl && data.total_rows_processed !== undefined) {
+            cntEl.innerText = Number(data.total_rows_processed).toLocaleString('id-ID');
+        }
+
+        // Detail cards
+        if (data.details) {
+            ['report_prq','viseepro','data_all','caring','performance','ar_agents']
+                .forEach(k => { if (data.details[k]) updateSourceCard(k, data.details[k]); });
+        }
+
+        // KPI counters
+        if (data.details?.data_all?.total)   { const el = document.getElementById('kpiCustomers'); if (el) el.innerText = Number(data.details.data_all.total).toLocaleString('id-ID'); }
+        if (data.details?.caring?.total)     { const el = document.getElementById('kpiCaring');    if (el) el.innerText = Number(data.details.caring.total).toLocaleString('id-ID'); }
+        if (data.details?.report_prq?.count) { const el = document.getElementById('kpiVisits');    if (el) el.innerText = Number(data.details.report_prq.count).toLocaleString('id-ID'); }
+        if (data.details?.viseepro?.count)   { const el = document.getElementById('kpiViseepro');  if (el) el.innerText = Number(data.details.viseepro.count).toLocaleString('id-ID'); }
+
+        // Durasi di sub-title
+        const subEl = document.getElementById('resultStatusSub');
+        if (subEl && data.duration_seconds) {
+            const ts = data.last_sync_formatted || '';
+            subEl.innerHTML = `Terakhir diperbarui: <span id="resultTimestampText">${ts}</span> &mdash; Waktu sync: <strong>${data.duration_seconds}s</strong>`;
+        }
+
+        if (statusBox) statusBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 500);
 }
 
 function updateSourceCard(key, item) {
     const badgeEl = document.getElementById('badge_' + key);
     const countEl = document.getElementById('count_' + key);
-    const msgEl = document.getElementById('msg_' + key);
-
+    const msgEl   = document.getElementById('msg_'   + key);
     if (badgeEl) {
         badgeEl.className = 'source-badge ' + (item.success ? 'source-badge-success' : 'source-badge-error');
         badgeEl.innerText = item.success ? '✓ Berhasil' : '✕ Gagal';
     }
     if (countEl && item.count !== undefined) {
-        countEl.innerHTML = Number(item.count).toLocaleString('id-ID') + ' <span style="font-size:12px; font-weight:500; color:var(--ink-500);">records</span>';
+        countEl.innerHTML = Number(item.count).toLocaleString('id-ID')
+            + ' <span style="font-size:12px;font-weight:500;color:var(--ink-500);">records</span>';
     }
-    if (msgEl && item.message) {
-        msgEl.innerText = item.message;
-    }
+    if (msgEl && item.message) msgEl.innerText = item.message;
 }
 </script>
 @endpush
+

@@ -1,0 +1,87 @@
+@startuml 05_activity_sync_c3mr
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam activity {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    DiamondBackgroundColor #FEF3C7
+    DiamondBorderColor #D97706
+    DiamondFontColor #78350F
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. app/Http/Controllers/C3mrSyncController.php (syncAll)
+' 2. app/Services/C3mrSyncService.php (syncAll, syncReportPrq, syncViseepro, syncDataAll, syncCaring, syncPerformance, consolidateAr)
+' 3. resources/views/c3mr/sync.blade.php (fetch POST /c3mr/sync/all)
+' ==============================================================================
+
+|#EFF6FF|Pengguna / Browser|
+|#FEF3C7|C3mrSyncController|
+|#FFF5F5|C3mrSyncService (Engine)|
+|#F0FDF4|Database & Storage|
+
+|Pengguna / Browser|
+start
+:Buka menu "Sync Data C3MR" (GET /c3mr/sync);
+:Klik tombol "Sync Data C3MR";
+:Tampilkan animasi loader & disable tombol;
+:Kirim AJAX POST /c3mr/sync/all (Header: X-CSRF-TOKEN);
+
+|C3mrSyncController|
+:Terima request sinkronisasi;
+:Panggil C3mrSyncService::syncAll();
+
+|C3mrSyncService (Engine)|
+:Ambil konfigurasi URL Google Spreadsheet dari database Setting;
+:Ekstrak Spreadsheet ID;
+
+if (Spreadsheet ID valid?) then (Ya)
+    :1. Unduh CSV Report PRQ (gid=1303511230);
+    |Database & Storage|
+    :Eksekusi ReportPrqImport;\nupdateOrCreate Visit, Customer, ArAgent;
+    |C3mrSyncService (Engine)|
+    :2. Unduh CSV VISEEPRO (gid=172624186);
+    |Database & Storage|
+    :Eksekusi ViseeproImport;\nupdateOrCreate ViseeproData;
+    |C3mrSyncService (Engine)|
+    :3. Unduh CSV sheet DATA ALL;
+    |Database & Storage|
+    :Eksekusi CustomerSyncService;\nupdateOrCreate master Customer & saldo piutang;\nJalankan CustomerPhoneEnricher (normalisasi no HP);
+    |C3mrSyncService (Engine)|
+    :4. Baca sheet DATA ALL untuk caring;
+    |Database & Storage|
+    :Eksekusi C3mrCaringService;\nupdateOrCreate CaringLog (PRITI);
+    |C3mrSyncService (Engine)|
+    :5. Unduh CSV sheet PERFORMANSI DETAIL;
+    |Database & Storage|
+    :Eksekusi C3mrCaringService;\nupdateOrCreate WitelPerformance;
+    |C3mrSyncService (Engine)|
+    :6. Panggil ArAgentService::consolidateAgents();
+    |Database & Storage|
+    :Konsolidasi & deduplikasi nama AR Agent;\nReassign relasi FK visits ke master record;
+    |C3mrSyncService (Engine)|
+    :Hitung total record diproses & tentukan overall status (success/warning);
+    :Simpan status, timestamp, dan JSON rincian ke tabel settings;
+    |C3mrSyncController|
+    :Kirim HTTP 200 JSON Response;
+else (Tidak valid)
+    |C3mrSyncController|
+    :Kirim HTTP 400 / JSON Error Response;
+endif
+
+|Pengguna / Browser|
+if (Status response HTTP 200?) then (Sukses)
+    :Tampilkan notifikasi sukses;
+    :Render breakdown jumlah record untuk 6 sumber data;
+    :Perbarui label timestamp "Last Sync";
+else (Gagal)
+    :Tampilkan alert banner error teknis;
+endif
+:Re-enable tombol sinkronisasi;
+stop
+
+@enduml

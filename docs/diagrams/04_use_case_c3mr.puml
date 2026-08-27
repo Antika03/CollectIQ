@@ -1,0 +1,80 @@
+@startuml 04_use_case_c3mr
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 8
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 12
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    ArrowColor #334155
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::get '/c3mr/hasil-caring', '/c3mr/hasil-caring/export', '/c3mr/performance', '/c3mr/sync', Route::post '/c3mr/sync/all', Route::get/post '/settings')
+' 2. app/Http/Controllers/C3mrCaringController.php
+' 3. app/Http/Controllers/C3mrPerformanceController.php
+' 4. app/Http/Controllers/C3mrSyncController.php (app/Services/C3mrSyncService.php)
+' 5. app/Http/Controllers/SettingController.php
+' ==============================================================================
+
+actor "Tim Collection / Admin" as Admin
+actor "AR Agent" as ARAgent
+
+rectangle "CollectIQ — Sub-Sistem C3MR Intelligence & Sinkronisasi" {
+    usecase "UC-17: Melihat Hasil Caring OBC\n(Status VOC, Tanggal Janji Bayar, Status Bayar)" as UC17
+    usecase "UC-18: Export Hasil Caring OBC (CSV)" as UC18
+    usecase "UC-19: Melihat Churn Risk & Performansi Witel\n(Rekap Billing, CYC, Cash Ratio)" as UC19
+    usecase "UC-20: Melakukan Sinkronisasi Data C3MR\n(Proses Master Sync Satu Pintu)" as UC20
+    usecase "UC-21: Mengonfigurasi URL Spreadsheet C3MR\n(Pengaturan Sumber Data Terpusat)" as UC21
+
+    ' Sub-usecase yang di-include oleh Sync Data C3MR
+    usecase "Sinkronisasi Report PRQ\n(Kunjungan Lapangan & Foto)" as Sub1
+    usecase "Sinkronisasi VISEEPRO\n(Aktivitas Survey AR Agent)" as Sub2
+    usecase "Sinkronisasi DATA ALL\n(Master Customer, Kontak, Piutang)" as Sub3
+    usecase "Sinkronisasi Hasil Caring OBC\n(Log Interaksi PRITI)" as Sub4
+    usecase "Sinkronisasi Performansi Witel\n(Target & Realisasi Billing)" as Sub5
+    usecase "Normalisasi & Konsolidasi AR Agent\n(Deduplikasi Nama Agen)" as Sub6
+}
+
+rectangle "External System" #FAFAFA {
+    boundary "Google Spreadsheet C3MR" as GSheet <<External Data Source>>
+}
+
+' Relasi Tim Collection / Admin
+Admin --> UC17
+Admin --> UC18
+Admin --> UC19
+Admin --> UC20
+Admin --> UC21
+
+' Relasi AR Agent
+ARAgent --> UC17
+
+' Relasi <<include>> dari proses Master Sync
+UC20 ..> Sub1 : <<include>>
+UC20 ..> Sub2 : <<include>>
+UC20 ..> Sub3 : <<include>>
+UC20 ..> Sub4 : <<include>>
+UC20 ..> Sub5 : <<include>>
+UC20 ..> Sub6 : <<include>>
+
+' Keterhubungan dengan External System
+Sub1 ..> GSheet : <<pull CSV (gid=1303511230)>>
+Sub2 ..> GSheet : <<pull CSV (gid=172624186)>>
+Sub3 ..> GSheet : <<pull CSV (sheet=DATA ALL)>>
+Sub4 ..> GSheet : <<baca cache sheet_data-all.csv>>
+Sub5 ..> GSheet : <<pull CSV (sheet=PERFORMANSI DETAIL)>>
+
+@enduml

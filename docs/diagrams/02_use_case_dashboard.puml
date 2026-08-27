@@ -1,0 +1,69 @@
+@startuml 02_use_case_dashboard
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 8
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 12
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    ArrowColor #334155
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::get '/', '/search', '/customers', '/customers/{id}', '/visits', '/visits/{id}', '/visits/{id}/photo')
+' 2. app/Http/Controllers/DashboardController.php
+' 3. app/Http/Controllers/GlobalSearchController.php
+' 4. app/Http/Controllers/CustomerController.php
+' 5. app/Http/Controllers/VisitController.php
+' ==============================================================================
+
+actor "Tim Collection / Admin" as Admin
+actor "AR Agent" as ARAgent
+
+rectangle "CollectIQ — Sub-Sistem Dashboard, Customer & Visit" {
+    usecase "UC-01: Melihat Dashboard Eksekutif\n(KPI, Trend 14 Hari, Top Agent)" as UC1
+    usecase "UC-02: Melakukan Pencarian Global\n(Pelanggan, SND, Kunjungan, AR Agent)" as UC2
+    usecase "UC-03: Melihat Daftar Pelanggan\n(Filter STO/Datel, Search, Paging)" as UC3
+    usecase "UC-04: Export Data Pelanggan (CSV)" as UC4
+    usecase "UC-05: Melihat Profil Customer 360\n(Detail, Riwayat Visit, PTP, Caring)" as UC5
+    usecase "UC-06: Melihat Daftar Kunjungan Lapangan\n(Filter Tanggal, AR Agent, Hasil Visit)" as UC6
+    usecase "UC-07: Export Data Kunjungan (Excel/CSV)" as UC7
+    usecase "UC-08: Melihat Detail & Foto Kunjungan" as UC8
+}
+
+rectangle "External System" #FAFAFA {
+    boundary "Google Drive" as GDrive <<External Storage>>
+}
+
+' Relasi Tim Collection / Admin
+Admin --> UC1
+Admin --> UC2
+Admin --> UC3
+Admin --> UC4
+Admin --> UC5
+Admin --> UC6
+Admin --> UC7
+Admin --> UC8
+
+' Relasi AR Agent
+ARAgent --> UC1
+ARAgent --> UC2
+ARAgent --> UC6
+ARAgent --> UC8
+
+' Keterhubungan dengan External System
+UC8 ..> GDrive : <<stream/proxy>> (ambil foto bukti)
+
+@enduml

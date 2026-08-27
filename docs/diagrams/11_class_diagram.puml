@@ -1,0 +1,221 @@
+@startuml 11_class_diagram
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam classAttributeIconSize 0
+
+skinparam class {
+    BackgroundColor #FFFFFF
+    BorderColor #94A3B8
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. app/Http/Controllers/*.php (11 Controller Aktif)
+' 2. app/Services/*.php (6 Service Aktif)
+' 3. app/Models/*.php (9 Model Inti Aktif)
+' 4. app/Imports/*.php, app/Exports/*.php
+' ==============================================================================
+
+package "Controllers (HTTP Layer)" #F8FAFC {
+    class DashboardController {
+        +index() : View
+    }
+
+    class CustomerController {
+        +index(request: Request) : View
+        +show(customer: Customer) : View
+        +export(request: Request) : BinaryFileResponse
+    }
+
+    class VisitController {
+        +index(request: Request) : View
+        +show(visit: Visit) : View
+        +photo(visit: Visit) : Response
+        +export(request: Request) : BinaryFileResponse
+    }
+
+    class PtpMonitoringController {
+        +index(request: Request) : View
+        +export(request: Request) : StreamedResponse
+    }
+
+    class RiskScoreController {
+        +index(request: Request) : View
+        +export(request: Request) : StreamedResponse
+    }
+
+    class PiutangController {
+        +index(request: Request) : View
+        +export(request: Request) : StreamedResponse
+    }
+
+    class C3mrCaringController {
+        +index(request: Request) : View
+        +export(request: Request) : StreamedResponse
+    }
+
+    class C3mrPerformanceController {
+        +index() : View
+    }
+
+    class C3mrSyncController {
+        +index() : View
+        +syncAll(request: Request) : JsonResponse|RedirectResponse
+    }
+
+    class ArAgentController {
+        +index(request: Request) : View
+        +export(request: Request) : StreamedResponse
+    }
+
+    class SettingController {
+        +index() : View
+        +update(request: Request) : RedirectResponse
+    }
+
+    class GlobalSearchController {
+        +search(request: Request) : View|RedirectResponse
+    }
+}
+
+package "Services (Business Logic Layer)" #FFF5F5 {
+    class C3mrSyncService {
+        -static defaultSheetId : string
+        +static extractSpreadsheetId(url: string) : string
+        +static getActiveSpreadsheetId() : string
+        +static validateSpreadsheetUrl(url: string) : array
+        +static syncAll() : array
+        +static syncReportPrq(sheetId: string) : array
+        +static syncViseepro(sheetId: string) : array
+        +static syncDataAll(sheetId: string) : array
+        +static syncCaring(sheetId: string) : array
+        +static syncPerformance(sheetId: string) : array
+        +static consolidateAr() : array
+    }
+
+    class CustomerSyncService {
+        +static cleanPhoneNumber(phone: string) : string
+        +static cleanNumeric(val: string) : float
+        +static syncFromDataAllCsv(csvPath: string) : array
+    }
+
+    class C3mrCaringService {
+        +static parseDate(rawDate: string) : Carbon
+        +static importCaringFromDataAll(csvPath: string) : array
+        +static importWitelPerformance(csvPath: string) : array
+    }
+
+    class ArAgentService {
+        +static getCanonicalName(rawName: string) : string
+        +static consolidateAgents() : array
+    }
+
+    class ChurnRiskService {
+        +static evaluateCustomer(customer: Customer) : array
+    }
+
+    class CustomerPhoneEnricher {
+        +static enrichPhoneNumbers() : array
+    }
+}
+
+package "Eloquent Models (Data Layer)" #F0FDF4 {
+    class Customer {
+        +id : int
+        +nomor_internet : string
+        +nama_pelanggan : string
+        +no_hp_terbaru : string
+        +saldo_piutang : float
+        +umur_customer : string
+        +visits() : HasMany
+        +caringLogs() : HasMany
+        +promiseToPays() : HasMany
+        +viseeproData() : HasMany
+        +getFormattedWaNumberAttribute() : string
+        +getWaUrlAttribute() : string
+    }
+
+    class ArAgent {
+        +id : int
+        +name : string
+        +is_active : bool
+        +visits() : HasMany
+        +caringLogs() : HasMany
+    }
+
+    class Visit {
+        +id : int
+        +collect_id : string
+        +hasil_visit : string
+        +foto_url : string
+        +is_ptp : bool
+        +customer() : BelongsTo
+        +arAgent() : BelongsTo
+        +getDriveFileIdAttribute() : string
+    }
+
+    class PromiseToPay {
+        +id : int
+        +promised_date : date
+        +status : string
+        +customer() : BelongsTo
+        +visit() : BelongsTo
+    }
+
+    class CaringLog {
+        +id : int
+        +nomor_internet : string
+        +petugas_caring : string
+        +status_caring : string
+        +voc : string
+        +is_ptp : bool
+        +status_bayar : string
+        +customer() : BelongsTo
+        +arAgent() : BelongsTo
+    }
+
+    class ViseeproData {
+        +id : int
+        +activity_id : string
+        +activity_status : string
+        +customer() : BelongsTo
+    }
+
+    class WitelPerformance {
+        +id : int
+        +witel : string
+        +billing : float
+        +cash_coll : float
+    }
+
+    class Setting {
+        +id : int
+        +c3mr_url : string
+        +last_sync_at : datetime
+        +last_sync_status : string
+    }
+}
+
+' ==============================================================================
+' DEPENDENCY & ASSOCIATIONS
+' ==============================================================================
+C3mrSyncController ..> C3mrSyncService : uses
+C3mrSyncService ..> CustomerSyncService : delegates
+C3mrSyncService ..> C3mrCaringService : delegates
+C3mrSyncService ..> ArAgentService : delegates
+C3mrSyncService ..> CustomerPhoneEnricher : delegates
+
+RiskScoreController ..> ChurnRiskService : uses
+DashboardController ..> ChurnRiskService : uses
+
+Customer "1" *-- "0..*" Visit
+Customer "1" *-- "0..*" PromiseToPay
+Customer "1" *-- "0..*" CaringLog
+Customer "1" *-- "0..*" ViseeproData
+ArAgent "1" *-- "0..*" Visit
+Visit "1" *-- "0..1" PromiseToPay
+
+@enduml

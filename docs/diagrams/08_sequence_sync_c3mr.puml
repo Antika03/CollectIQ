@@ -1,0 +1,97 @@
+@startuml 08_sequence_sync_c3mr
+!theme plain
+autonumber
+skinparam shadowing false
+skinparam roundcorner 5
+
+skinparam participant {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+}
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::post('/c3mr/sync/all', [C3mrSyncController::class, 'syncAll']))
+' 2. app/Http/Controllers/C3mrSyncController.php (syncAll)
+' 3. app/Services/C3mrSyncService.php (syncAll, syncReportPrq, syncViseepro, syncDataAll, syncCaring, syncPerformance, consolidateAr)
+' 4. app/Imports/ReportPrqImport.php, app/Imports/ViseeproImport.php
+' 5. resources/views/c3mr/sync.blade.php (fetch API caller)
+' ==============================================================================
+
+actor "Tim Collection" as User
+participant "Browser (UI)" as Browser
+participant "C3mrSyncController" as Controller
+participant "C3mrSyncService" as Service
+participant "Google Spreadsheet" as GSheet <<External>>
+database "MySQL Database" as DB
+
+User -> Browser: Klik tombol "Sync Data C3MR"
+activate Browser
+Browser -> Browser: Tampilkan spinner loading & disable tombol
+Browser -> Controller: POST /c3mr/sync/all (Header: X-CSRF-TOKEN, Accept: application/json)
+activate Controller
+
+Controller -> Service: C3mrSyncService::syncAll()
+activate Service
+
+' Ambil Setting
+Service -> DB: Setting::first()
+DB --> Service: Ambil c3mr_url & ekstrak Spreadsheet ID
+
+' 1. Sync Report PRQ
+Service -> GSheet: HTTP GET export?format=csv&gid=1303511230
+GSheet --> Service: CSV Report PRQ
+Service -> DB: Excel::import(new ReportPrqImport)\nupdateOrCreate Visit, Customer, ArAgent
+DB --> Service: Return jumlah record diproses
+
+' 2. Sync VISEEPRO
+Service -> GSheet: HTTP GET export?format=csv&gid=172624186
+GSheet --> Service: CSV VISEEPRO
+Service -> DB: Excel::import(new ViseeproImport)\nupdateOrCreate ViseeproData
+DB --> Service: Return jumlah record diproses
+
+' 3. Sync DATA ALL
+Service -> GSheet: HTTP GET gviz/tq?sheet=DATA ALL
+GSheet --> Service: CSV DATA ALL
+Service -> DB: CustomerSyncService::syncFromDataAllCsv()\nupdateOrCreate Customer (master, kontak, piutang)\nCustomerPhoneEnricher::enrichPhoneNumbers()
+DB --> Service: Return jumlah update/create customer
+
+' 4. Sync Caring
+Service -> DB: C3mrCaringService::importCaringFromDataAll()\nupdateOrCreate CaringLog (Hasil Caring OBC PRITI)
+DB --> Service: Return jumlah record caring
+
+' 5. Sync Performance
+Service -> GSheet: HTTP GET gviz/tq?sheet=PERFORMANSI DETAIL
+GSheet --> Service: CSV Performansi
+Service -> DB: C3mrCaringService::importWitelPerformance()\nupdateOrCreate WitelPerformance
+DB --> Service: Return jumlah performansi witel
+
+' 6. Consolidate AR
+Service -> DB: ArAgentService::consolidateAgents()\nMerge duplikasi nama & reassign FK visits
+DB --> Service: Return final_agent_count
+
+' Simpan Riwayat
+Service -> Service: Evaluasi overall status (success/warning)\nHitung total_rows_processed
+Service -> DB: Setting::update(last_sync_at, last_sync_status, last_sync_result)
+DB --> Service: OK
+
+Service --> Controller: Return array [status, details, total_rows_processed]
+deactivate Service
+
+Controller --> Browser: HTTP 200 JSON {status: 'success', total_rows_processed: 302, details: {...}}
+deactivate Controller
+
+Browser -> Browser: Update status kartu per sumber data\nPerbarui timestamp Last Sync\nSembunyikan loader & re-enable tombol
+Browser --> User: Tampilkan feedback notifikasi berhasil
+deactivate Browser
+
+@enduml

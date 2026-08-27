@@ -1,0 +1,71 @@
+@startuml 07_activity_ptp
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 8
+skinparam activity {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    DiamondBackgroundColor #FEF3C7
+    DiamondBorderColor #D97706
+    DiamondFontColor #78350F
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (GET /ptp-monitoring, GET /ptp-monitoring/export, GET /customers/{id})
+' 2. app/Http/Controllers/PtpMonitoringController.php
+' 3. app/Models/Visit.php, app/Models/Customer.php
+' 4. resources/views/ptp-monitoring/index.blade.php
+' ==============================================================================
+
+|#EFF6FF|Pengguna (Tim Collection / AR Agent)|
+|#FEF3C7|PtpMonitoringController|
+|#F0FDF4|Database MySQL|
+
+|Pengguna (Tim Collection / AR Agent)|
+start
+:Buka menu "PTP Monitoring" (GET /ptp-monitoring);
+
+|PtpMonitoringController|
+:Ambil parameter filter (search, ar_agent_id, date_from, date_to);
+
+|Database MySQL|
+:Query tabel visits dengan kondisi is_ptp = true;
+:Eager load relasi customer dan arAgent;
+:Hitung KPI PTP:\n- Total PTP\n- PTP Hari Ini\n- PTP Memiliki Foto Bukti\n- PTP Conversion Rate (PTP / Total Visit);
+:Ambil daftar seluruh AR Agent aktif untuk opsi filter;
+
+|PtpMonitoringController|
+:Paginate data (20 baris per halaman);
+:Render view ptp-monitoring/index;
+
+|Pengguna (Tim Collection / AR Agent)|
+:Lihat daftar komitmen janji bayar (PTP) beserta rincian pelanggan & AR Agent;
+
+if (Pilih tindakan?) then (Filter Data)
+    :Pilih AR Agent / Rentang Tanggal / Input Kata Kunci;
+    :Submit form filter;
+    :PtpMonitoringController memproses query ulang;
+elseif (Buka Customer 360)
+    :Klik nama pelanggan atau SND;
+    :Navigasi ke profil Customer 360 (GET /customers/{id});
+    :Lihat detail menyeluruh interaksi pelanggan;
+elseif (Follow-up via WhatsApp)
+    :Klik tombol "Chat WA" pada baris pelanggan;
+    :Buka tautan wa.me dengan format nomor internasional (62xxx)\ndan template pesan resmi penagihan Telkom Witel Priangan Timur;
+elseif (Export Data)
+    :Klik tombol "Export CSV" (GET /ptp-monitoring/export);
+    |PtpMonitoringController|
+    |Database MySQL|
+    :Query seluruh data PTP sesuai filter aktif;
+    |PtpMonitoringController|
+    :Stream response file CSV dengan UTF-8 BOM;
+    |Pengguna (Tim Collection / AR Agent)|
+    :Unduh file CSV komitmen janji bayar;
+endif
+
+stop
+
+@enduml

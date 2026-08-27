@@ -1,0 +1,61 @@
+@startuml 03_use_case_collection
+!theme plain
+left to right direction
+skinparam packageStyle rectangle
+skinparam shadowing false
+skinparam roundcorner 8
+
+skinparam actor {
+    BackgroundColor #EFF6FF
+    BorderColor #1E40AF
+    FontColor #0F172A
+    FontSize 12
+}
+
+skinparam usecase {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+    ArrowColor #334155
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. routes/web.php (Route::get '/ptp-monitoring', '/ptp-monitoring/export', '/risk-score', '/risk-score/export', '/piutang', '/piutang/export', '/ar-agents', '/ar-agents/export')
+' 2. app/Http/Controllers/PtpMonitoringController.php
+' 3. app/Http/Controllers/RiskScoreController.php (app/Services/ChurnRiskService.php)
+' 4. app/Http/Controllers/PiutangController.php
+' 5. app/Http/Controllers/ArAgentController.php
+' ==============================================================================
+
+actor "Tim Collection / Admin" as Admin
+actor "AR Agent" as ARAgent
+
+rectangle "CollectIQ — Sub-Sistem Collection Intelligence" {
+    usecase "UC-09: Melihat Monitoring PTP\n(Promise To Pay, Filter Agent, Status)" as UC9
+    usecase "UC-10: Export Data PTP (CSV)" as UC10
+    usecase "UC-11: Melihat Analisis Risk Score Pelanggan\n(Evaluasi Churn Risk Indicator & Rekomendasi)" as UC11
+    usecase "UC-12: Export Data Risk Score (CSV)" as UC12
+    usecase "UC-13: Melihat Piutang Outstanding\n(Filter Aging / Umur Tunggakan & Datel)" as UC13
+    usecase "UC-14: Export Data Piutang (CSV)" as UC14
+    usecase "UC-15: Melihat Daftar AR Agent\n(Statistik Kunjungan, Status Aktif)" as UC15
+    usecase "UC-16: Export Data AR Agent (CSV)" as UC16
+}
+
+' Relasi Tim Collection / Admin
+Admin --> UC9
+Admin --> UC10
+Admin --> UC11
+Admin --> UC12
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+
+' Relasi AR Agent
+ARAgent --> UC9
+ARAgent --> UC13
+ARAgent --> UC15
+
+@enduml

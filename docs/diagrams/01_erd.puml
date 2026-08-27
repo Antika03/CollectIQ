@@ -1,0 +1,207 @@
+@startuml 01_erd
+!theme plain
+skinparam linetype ortho
+skinparam roundcorner 5
+skinparam shadowing false
+skinparam class {
+    BackgroundColor #FFFFFF
+    ArrowColor #334155
+    BorderColor #94A3B8
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. database/migrations/2026_07_07_071310_create_customers_table.php
+' 2. database/migrations/2026_07_07_071320_create_ar_agents_table.php
+' 3. database/migrations/2026_07_07_071330_create_visits_table.php
+' 4. database/migrations/2026_07_07_071335_create_promise_to_pays_table.php
+' 5. database/migrations/2026_07_23_075338_create_viseepro_data_table.php
+' 6. database/migrations/2026_07_27_070733_create_settings_table.php
+' 7. database/migrations/2026_08_25_175000_add_c3mr_fields_to_customers_table.php
+' 8. database/migrations/2026_08_25_175500_create_c3mr_tables.php
+' 9. database/migrations/2026_08_26_091500_add_c3mr_url_to_settings_table.php
+' ==============================================================================
+
+package "Core Master & Transaction" #F8FAFC {
+    entity "customers" as customers {
+        * id : BIGINT <<PK>>
+        --
+        * nomor_internet : VARCHAR(50) <<UK>>
+        ncli : VARCHAR(50)
+        * nama_pelanggan : VARCHAR(255)
+        alamat : TEXT
+        sto : VARCHAR(50)
+        datel : VARCHAR(100)
+        nama_layanan_internet : VARCHAR(255)
+        no_hp_terbaru : VARCHAR(20)
+        email : VARCHAR(150)
+        tipe_hunian_terbaru : VARCHAR(100)
+        saldo_piutang : DECIMAL(15,2)
+        umur_customer : VARCHAR(50)
+        risk_score : TINYINT UNSIGNED
+        risk_level : ENUM('low','medium','high','critical')
+        last_visit_at : TIMESTAMP
+        total_visits : INT UNSIGNED
+        broken_ptp_count : INT UNSIGNED
+        pending_ptp_count : INT UNSIGNED
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "ar_agents" as ar_agents {
+        * id : BIGINT <<PK>>
+        --
+        * name : VARCHAR(255) <<UK>>
+        chat_id_telegram : VARCHAR(50)
+        is_active : BOOLEAN
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "visits" as visits {
+        * id : BIGINT <<PK>>
+        --
+        * collect_id : VARCHAR(100) <<UK>>
+        * customer_id : BIGINT <<FK>>
+        * ar_agent_id : BIGINT <<FK>>
+        * tanggal_input : DATE
+        * hasil_visit : VARCHAR(255)
+        kategori_visit : VARCHAR(255)
+        keterangan_visit : TEXT
+        foto_url : TEXT
+        no_hp_snapshot : VARCHAR(20)
+        tipe_hunian_snapshot : VARCHAR(100)
+        * is_ptp : BOOLEAN
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "promise_to_pays" as promise_to_pays {
+        * id : BIGINT <<PK>>
+        --
+        * visit_id : BIGINT <<FK, UK>>
+        * customer_id : BIGINT <<FK>>
+        * ar_agent_id : BIGINT <<FK>>
+        promised_date : DATE
+        * status : ENUM('pending','fulfilled','broken','cancelled')
+        notes : TEXT
+        fulfilled_at : TIMESTAMP
+        broken_at : TIMESTAMP
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+}
+
+package "C3MR Intelligence" #F1F5F9 {
+    entity "caring_logs" as caring_logs {
+        * id : BIGINT <<PK>>
+        --
+        customer_id : BIGINT <<FK, Nullable>>
+        ar_agent_id : BIGINT <<FK, Nullable>>
+        * nomor_internet : VARCHAR(50)
+        nama_pelanggan : VARCHAR(255)
+        no_hp : VARCHAR(30)
+        petugas_caring : VARCHAR(100)
+        tanggal_caring : DATE
+        status_caring : VARCHAR(50)
+        voc : VARCHAR(100)
+        keterangan : TEXT
+        frekuensi : VARCHAR(20)
+        is_ptp : BOOLEAN
+        tanggal_janji_bayar : DATE
+        status_bayar : VARCHAR(50)
+        jumlah_bayar : DECIMAL(15,2)
+        bill_category : VARCHAR(50)
+        umur_customer : VARCHAR(50)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "viseepro_data" as viseepro_data {
+        * id : BIGINT <<PK>>
+        --
+        customer_id : BIGINT <<FK, Nullable>>
+        activity_id : VARCHAR(255)
+        ncli : VARCHAR(255)
+        snd : VARCHAR(255)
+        nama_perusahaan : VARCHAR(255)
+        regional : VARCHAR(255)
+        witel : VARCHAR(255)
+        sto : VARCHAR(255)
+        nama_agent : VARCHAR(255)
+        activity_status : VARCHAR(255)
+        activity_reason : TEXT
+        pic_name : VARCHAR(255)
+        pic_role : VARCHAR(255)
+        pic_cp : VARCHAR(255)
+        address : TEXT
+        latitude : VARCHAR(255)
+        longitude : VARCHAR(255)
+        input_date : DATE
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "witel_performances" as witel_performances {
+        * id : BIGINT <<PK>>
+        --
+        * witel : VARCHAR(100)
+        segmen : VARCHAR(50)
+        kategori : VARCHAR(50)
+        billing : DECIMAL(18,2)
+        cash_coll : DECIMAL(18,2)
+        cyc_percent : DECIMAL(8,2)
+        cr_percent : DECIMAL(8,2)
+        c3mr_percent : DECIMAL(8,2)
+        saldo : DECIMAL(18,2)
+        gap : DECIMAL(18,2)
+        rank : INT
+        periode : VARCHAR(20)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+}
+
+package "System & Settings" #FFFFFF {
+    entity "settings" as settings {
+        * id : BIGINT <<PK>>
+        --
+        c3mr_url : TEXT
+        report_prq_url : TEXT
+        viseepro_url : TEXT
+        last_sync_at : TIMESTAMP
+        last_sync_status : VARCHAR(50)
+        last_sync_result : TEXT
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+
+    entity "users" as users {
+        * id : BIGINT <<PK>>
+        --
+        * name : VARCHAR(255)
+        * email : VARCHAR(255) <<UK>>
+        * password : VARCHAR(255)
+        remember_token : VARCHAR(100)
+        created_at : TIMESTAMP
+        updated_at : TIMESTAMP
+    }
+}
+
+' ==============================================================================
+' RELASI KARDINALITAS
+' ==============================================================================
+customers ||..o{ visits : "1 : N"
+customers ||..o{ promise_to_pays : "1 : N"
+customers ||..o{ caring_logs : "1 : N (nullable)"
+customers ||..o{ viseepro_data : "1 : N (nullable)"
+
+ar_agents ||..o{ visits : "1 : N"
+ar_agents ||..o{ promise_to_pays : "1 : N"
+ar_agents ||..o{ caring_logs : "1 : N (nullable)"
+
+visits ||..o| promise_to_pays : "1 : 0..1 (1:1 per visit)"
+
+@enduml

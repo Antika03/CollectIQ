@@ -1,0 +1,83 @@
+@startuml 12_component_architecture
+!theme plain
+skinparam shadowing false
+skinparam roundcorner 5
+skinparam componentStyle uml2
+
+skinparam component {
+    BackgroundColor #FFFFFF
+    BorderColor #0284C7
+    FontColor #0F172A
+    FontSize 11
+}
+
+' ==============================================================================
+' SUMBER IMPLEMENTASI:
+' 1. resources/views/ (Blade Presentation)
+' 2. routes/web.php & app/Http/Controllers/ (HTTP Routing & Controller Layer)
+' 3. app/Services/ (Business Logic Layer)
+' 4. app/Models/ (Data Access Layer - Eloquent ORM)
+' 5. database/migrations/ (Persistence Layer - MySQL)
+' 6. Google Sheets API & Google Drive URL (External Integration)
+' ==============================================================================
+
+package "Presentation Layer (Client / UI)" #EFF6FF {
+    [Blade Views & Layouts\n(resources/views)] as UI
+    [JavaScript AJAX Client\n(Fetch API + CSRF)] as JS
+    [CSS Design System\n(Telkom Red Theme)] as CSS
+}
+
+package "Application & Routing Layer (Laravel 12)" #F8FAFC {
+    [Web Router\n(routes/web.php)] as Router
+    [HTTP Controllers\n(Dashboard, Visits, Customers,\nPTP, RiskScore, C3mrSync, dll)] as Controllers
+}
+
+package "Business Logic Layer (Services & Imports)" #FFF5F5 {
+    [C3mrSyncService\n(Master Orchestrator)] as SyncSvc
+    [CustomerSyncService\n(Master Pelanggan & Piutang)] as CustSvc
+    [C3mrCaringService\n(Hasil Caring & Witel)] as CaringSvc
+    [ArAgentService\n(Deduplikasi & Konsolidasi)] as ArSvc
+    [ChurnRiskService\n(Rule-Based Risk Engine)] as RiskSvc
+    [CustomerPhoneEnricher\n(Normalisasi No HP)] as PhoneSvc
+    [Laravel Excel Engine\n(ReportPrq & Viseepro Import)] as ExcelEngine
+}
+
+package "Data Access Layer (Eloquent ORM)" #F0FDF4 {
+    [Eloquent Models\n(Customer, Visit, ArAgent, PTP,\nCaringLog, ViseeproData, Setting)] as Models
+}
+
+database "Persistence Layer" #FAFAFA {
+    folder "MySQL 8.0 Database\n(Railway MySQL Service)" {
+        [Tabel customers, visits, ar_agents,\npromise_to_pays, caring_logs,\nviseepro_data, settings] as DB
+    }
+}
+
+cloud "External Services" #FEF3C7 {
+    [Google Spreadsheet C3MR\n(Sumber Data PRQ, VISEEPRO, DATA ALL)] as GSheet
+    [Google Drive\n(Penyimpanan Foto Bukti Kunjungan)] as GDrive
+}
+
+' Alur Komunikasi
+UI --> Router : HTTP Request
+JS --> Router : AJAX JSON Request
+Router --> Controllers
+Controllers --> SyncSvc
+Controllers --> RiskSvc
+Controllers --> Models : Direct Query
+Controllers ..> GDrive : Proxy Stream Foto (GET /visits/{id}/photo)
+
+SyncSvc --> CustSvc
+SyncSvc --> CaringSvc
+SyncSvc --> ArSvc
+SyncSvc --> PhoneSvc
+SyncSvc --> ExcelEngine
+SyncSvc ..> GSheet : HTTP GET CSV Download
+
+CustSvc --> Models
+CaringSvc --> Models
+ArSvc --> Models
+ExcelEngine --> Models
+
+Models --> DB : MySQL PDO Driver
+
+@enduml

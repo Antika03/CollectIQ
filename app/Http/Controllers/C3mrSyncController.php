@@ -9,13 +9,8 @@ use App\Models\Visit;
 use App\Models\ViseeproData;
 use App\Models\Setting;
 use App\Services\C3mrSyncService;
-use App\Services\CustomerSyncService;
-use App\Services\CustomerPhoneEnricher;
-use App\Services\C3mrCaringService;
-use App\Services\ArAgentService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\File;
+use Carbon\Carbon;
 
 class C3mrSyncController extends Controller
 {
@@ -30,8 +25,8 @@ class C3mrSyncController extends Controller
 
         $setting = Setting::first();
         $lastSyncAt = $setting?->last_sync_at;
-        $lastSyncFormatted = $lastSyncAt 
-            ? $lastSyncAt->translatedFormat('d F Y, H:i') . ' WIB' 
+        $lastSyncFormatted = $lastSyncAt
+            ? $lastSyncAt->translatedFormat('d F Y, H:i') . ' WIB'
             : 'Belum pernah disinkronkan';
         $lastSyncStatus = $setting?->last_sync_status;
         $lastSyncResult = $setting?->last_sync_result;
@@ -52,36 +47,194 @@ class C3mrSyncController extends Controller
     }
 
     /**
-     * Master Sync Data C3MR (Report PRQ, VISEEPRO, DATA ALL, CARING, PERFORMANSI, & AR)
+     * Master Sync via Server-Sent Events (SSE).
+     *
+     * Menggunakan streaming response agar tidak timeout di Railway.
+     * Browser menerima progress real-time; setiap tahap mengirimkan event SSE.
+     * Frontend membaca stream dan memperbarui UI secara live.
      */
     public function syncAll(Request $request)
     {
-        try {
-            $result = C3mrSyncService::syncAll();
+        return response()->stream(function () {
+            @ini_set('max_execution_time', 0);
+            @set_time_limit(0);
 
-            if ($request->ajax() || $request->wantsJson()) {
-                return response()->json($result);
+            // Pastikan output tidak di-buffer
+            if (ob_get_level() > 0) {
+                ob_end_clean();
             }
 
-            if ($result['status'] === 'success') {
-                return redirect('/c3mr/sync')->with('success', "Sync Data C3MR Berhasil! {$result['total_rows_processed']} data dari seluruh sumber berhasil diperbarui.")->with('syncResult', $result);
-            } elseif ($result['status'] === 'warning') {
-                return redirect('/c3mr/sync')->with('warning', "Sinkronisasi selesai dengan beberapa catatan. Silakan periksa rincian sumber data.")->with('syncResult', $result);
-            } else {
-                return redirect('/c3mr/sync')->with('error', "Gagal melakukan sinkronisasi data C3MR.")->with('syncResult', $result);
-            }
-        } catch (\Throwable $e) {
-            if ($request->ajax() || $request->wantsJson()) {
-                return response()->json([
+            /**
+             * Kirim satu SSE event ke browser.
+             */
+            $send = function (string $event, array $data) {
+                echo "event: {$event}\n";
+                echo 'data: ' . json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . "\n\n";
+                if (function_exists('fastcgi_finish_request')) {
+                    // Tidak untuk SSE
+                }
+                if (ob_get_level() > 0) ob_flush();
+                flush();
+            };
+
+            try {
+                $startTime     = microtime(true);
+                $syncTimestamp = Carbon::now();
+
+                $send('progress', [
+                    'step'    => 'start',
+                    'message' => 'Memulai sinkronisasi data C3MR...',
+                    'pct'     => 3,
+                ]);
+
+                // ── TAHAP 1: Download & Extract XLSX ──────────────────────────────
+                $send('progress', [
+                    'step'    => 'download',
+                    'message' => 'Mengunduh master workbook dari Google Spreadsheet (~60–90 detik, mohon tunggu)...',
+                    'pct'     => 8,
+                ]);
+
+                $downloadOk = false;
+                try {
+                    C3mrSyncService::downloadAndExtractMasterWorkbook();
+                    $downloadOk = true;
+                    $send('progress', [
+                        'step'    => 'download_done',
+                        'message' => 'Master workbook berhasil diunduh & diekstrak dari Google Spreadsheet.',
+                        'pct'     => 30,
+                    ]);
+                } catch (\Throwable $e) {
+                    // Fallback: pakai CSV lama jika ada
+                    $hasCached = file_exists(storage_path('app/sheet_data-all.csv'));
+                    $send('progress', [
+                        'step'    => 'download_warn',
+                        'message' => 'Gagal unduh workbook terbaru: ' . $e->getMessage()
+                            . ($hasCached ? ' — Melanjutkan dengan data cache yang tersedia.' : ''),
+                        'pct'     => 20,
+                    ]);
+
+                    if (!$hasCached) {
+                        $send('error', [
+                            'success'      => false,
+                            'status'       => 'error',
+                            'status_label' => 'Sinkronisasi gagal',
+                            'message'      => 'Tidak dapat mengunduh data dari Google Spreadsheet dan tidak ada data cache tersedia. '
+                                . 'Periksa koneksi internet dan pastikan Spreadsheet dapat diakses publik.',
+                            'detail'       => $e->getMessage(),
+                        ]);
+                        return;
+                    }
+                }
+
+                // ── TAHAP 2: Report PRQ ───────────────────────────────────────────
+                $send('progress', ['step' => 'report_prq', 'message' => 'Menyinkronkan Report PRQ (Visit lapangan & AR Agent)...', 'pct' => 38]);
+                $reportPrq = C3mrSyncService::syncReportPrq();
+                $send('progress', ['step' => 'report_prq_done', 'message' => 'Report PRQ: ' . $reportPrq['message'], 'pct' => 46]);
+
+                // ── TAHAP 3: VISEEPRO ─────────────────────────────────────────────
+                $send('progress', ['step' => 'viseepro', 'message' => 'Menyinkronkan data VISEEPRO (Aktivitas AR)...', 'pct' => 48]);
+                $viseepro = C3mrSyncService::syncViseepro();
+                $send('progress', ['step' => 'viseepro_done', 'message' => 'VISEEPRO: ' . $viseepro['message'], 'pct' => 53]);
+
+                // ── TAHAP 4: DATA ALL (Master Customer ~27.000 records) ───────────
+                $send('progress', ['step' => 'data_all', 'message' => 'Menyinkronkan master data pelanggan (DATA ALL — ~27.000 records)...', 'pct' => 56]);
+                $dataAll = C3mrSyncService::syncDataAll();
+                $send('progress', ['step' => 'data_all_done', 'message' => 'DATA ALL: ' . $dataAll['message'], 'pct' => 72]);
+
+                // ── TAHAP 5: Hasil Caring ─────────────────────────────────────────
+                $send('progress', ['step' => 'caring', 'message' => 'Menyinkronkan log Hasil Caring OBC PRITI...', 'pct' => 75]);
+                $caring = C3mrSyncService::syncCaring();
+                $send('progress', ['step' => 'caring_done', 'message' => 'Caring: ' . $caring['message'], 'pct' => 87]);
+
+                // ── TAHAP 6: Performansi Witel ────────────────────────────────────
+                $send('progress', ['step' => 'performance', 'message' => 'Menyinkronkan Performansi Witel (Regional)...', 'pct' => 90]);
+                $performance = C3mrSyncService::syncPerformance();
+                $send('progress', ['step' => 'performance_done', 'message' => 'Performansi: ' . $performance['message'], 'pct' => 94]);
+
+                // ── TAHAP 7: AR Agents ────────────────────────────────────────────
+                $send('progress', ['step' => 'ar_agents', 'message' => 'Normalisasi & konsolidasi AR Agents...', 'pct' => 96]);
+                $arAgents = C3mrSyncService::consolidateAr();
+                $send('progress', ['step' => 'ar_agents_done', 'message' => 'AR Agents: ' . $arAgents['message'], 'pct' => 98]);
+
+                // ── Agregasi hasil ────────────────────────────────────────────────
+                $results = [
+                    'report_prq'  => $reportPrq,
+                    'viseepro'    => $viseepro,
+                    'data_all'    => $dataAll,
+                    'caring'      => $caring,
+                    'performance' => $performance,
+                    'ar_agents'   => $arAgents,
+                ];
+
+                $successCount   = collect($results)->where('success', true)->count();
+                $failCount      = collect($results)->where('success', false)->count();
+                $totalProcessed = collect($results)->sum('count');
+
+                $overallStatus = 'success';
+                if ($failCount > 0 && $successCount > 0) $overallStatus = 'warning';
+                elseif ($failCount > 0 && $successCount === 0) $overallStatus = 'error';
+
+                $duration      = round(microtime(true) - $startTime, 2);
+                $formattedDate = C3mrSyncService::formatIndonesianDate($syncTimestamp);
+
+                // Simpan riwayat sync ke Setting
+                $activeUrl = C3mrSyncService::getActiveSpreadsheetUrl();
+                $setting   = Setting::first();
+                if (!$setting) {
+                    Setting::create([
+                        'c3mr_url'         => $activeUrl,
+                        'report_prq_url'   => $activeUrl,
+                        'viseepro_url'     => $activeUrl,
+                        'last_sync_at'     => $syncTimestamp,
+                        'last_sync_status' => $overallStatus,
+                        'last_sync_result' => $results,
+                    ]);
+                } else {
+                    $setting->update([
+                        'c3mr_url'         => $setting->c3mr_url ?: $activeUrl,
+                        'last_sync_at'     => $syncTimestamp,
+                        'last_sync_status' => $overallStatus,
+                        'last_sync_result' => $results,
+                    ]);
+                }
+
+                $statusLabel = $overallStatus === 'success'
+                    ? 'Sinkronisasi berhasil'
+                    : ($overallStatus === 'warning' ? 'Sinkronisasi selesai dengan beberapa masalah' : 'Sinkronisasi gagal');
+
+                $finalPayload = [
+                    'success'              => $overallStatus !== 'error',
+                    'status'               => $overallStatus,
+                    'status_label'         => $statusLabel,
+                    'total_sources'        => count($results),
+                    'success_sources'      => $successCount,
+                    'failed_sources'       => $failCount,
+                    'total_rows_processed' => $totalProcessed,
+                    'duration_seconds'     => $duration,
+                    'last_sync_at'         => $syncTimestamp->format('Y-m-d H:i:s'),
+                    'last_sync_formatted'  => $formattedDate,
+                    'details'              => $results,
+                ];
+
+                $send('progress', ['step' => 'finish', 'message' => "Selesai dalam {$duration}s", 'pct' => 100]);
+                $send('complete', $finalPayload);
+
+            } catch (\Throwable $e) {
+                $send('error', [
                     'success'      => false,
                     'status'       => 'error',
                     'status_label' => 'Sinkronisasi gagal',
                     'message'      => $e->getMessage(),
-                ], 500);
+                    'file'         => basename($e->getFile()) . ':' . $e->getLine(),
+                ]);
             }
-
-            return redirect('/c3mr/sync')->with('error', "Terjadi kesalahan saat sinkronisasi: " . $e->getMessage());
-        }
+        }, 200, [
+            'Content-Type'      => 'text/event-stream; charset=UTF-8',
+            'Cache-Control'     => 'no-cache, no-store, must-revalidate',
+            'X-Accel-Buffering' => 'no',   // Nonaktifkan buffering nginx
+            'Connection'        => 'keep-alive',
+            'Pragma'            => 'no-cache',
+        ]);
     }
 
     public function syncDataAll(Request $request)
@@ -93,7 +246,7 @@ class C3mrSyncController extends Controller
             }
             return redirect('/c3mr/sync')->with('error', $res['message']);
         } catch (\Throwable $e) {
-            return redirect('/c3mr/sync')->with('error', "Gagal sync DATA ALL: " . $e->getMessage());
+            return redirect('/c3mr/sync')->with('error', 'Gagal sync DATA ALL: ' . $e->getMessage());
         }
     }
 
@@ -106,7 +259,7 @@ class C3mrSyncController extends Controller
             }
             return redirect('/c3mr/sync')->with('error', $res['message']);
         } catch (\Throwable $e) {
-            return redirect('/c3mr/sync')->with('error', "Gagal sync Hasil Caring: " . $e->getMessage());
+            return redirect('/c3mr/sync')->with('error', 'Gagal sync Hasil Caring: ' . $e->getMessage());
         }
     }
 
@@ -119,7 +272,7 @@ class C3mrSyncController extends Controller
             }
             return redirect('/c3mr/sync')->with('error', $res['message']);
         } catch (\Throwable $e) {
-            return redirect('/c3mr/sync')->with('error', "Gagal sync Performansi Witel: " . $e->getMessage());
+            return redirect('/c3mr/sync')->with('error', 'Gagal sync Performansi Witel: ' . $e->getMessage());
         }
     }
 
@@ -132,7 +285,7 @@ class C3mrSyncController extends Controller
             }
             return redirect('/c3mr/sync')->with('error', $res['message']);
         } catch (\Throwable $e) {
-            return redirect('/c3mr/sync')->with('error', "Gagal konsolidasi AR: " . $e->getMessage());
+            return redirect('/c3mr/sync')->with('error', 'Gagal konsolidasi AR: ' . $e->getMessage());
         }
     }
 }
