@@ -15,53 +15,65 @@ class CustomerPhoneEnricher
         $enrichedFromViseepro = 0;
         $enrichedFromVisits = 0;
 
-        $customers = Customer::all();
-
-        foreach ($customers as $c) {
-            $currentHp = $c->no_hp_terbaru;
-            $validHp = CustomerSyncService::cleanPhoneNumber($currentHp);
-
-            if ($currentHp && !$validHp) {
-                // Berisi teks tidak valid (misal "Janji bayar"), reset terlebih dahulu
-                $c->no_hp_terbaru = null;
-                $cleanedInvalid++;
-            } elseif ($validHp) {
-                $c->no_hp_terbaru = $validHp;
+        // 1. Build lookup map from ViseeproData (only ~1k rows)
+        $vpMap = [];
+        $vps = ViseeproData::whereNotNull('pic_cp')->where('pic_cp', '!=', '')->get(['snd', 'pic_cp']);
+        foreach ($vps as $vp) {
+            $cleaned = CustomerSyncService::cleanPhoneNumber($vp->pic_cp);
+            if ($cleaned && !empty($vp->snd)) {
+                $vpMap[trim((string)$vp->snd)] = $cleaned;
             }
-
-            // Jika belum ada nomor valid, coba cari dari ViseeproData
-            if (empty($c->no_hp_terbaru)) {
-                $vp = ViseeproData::where('customer_id', $c->id)
-                    ->orWhere('snd', $c->nomor_internet)
-                    ->whereNotNull('pic_cp')
-                    ->first();
-
-                if ($vp && !empty($vp->pic_cp)) {
-                    $vpHp = CustomerSyncService::cleanPhoneNumber($vp->pic_cp);
-                    if ($vpHp) {
-                        $c->no_hp_terbaru = $vpHp;
-                        $enrichedFromViseepro++;
-                    }
-                }
-            }
-
-            // Jika masih belum ada, coba cari dari snapshot visit yang valid
-            if (empty($c->no_hp_terbaru)) {
-                $visit = Visit::where('customer_id', $c->id)
-                    ->whereNotNull('no_hp_snapshot')
-                    ->first();
-
-                if ($visit) {
-                    $vHp = CustomerSyncService::cleanPhoneNumber($visit->no_hp_snapshot);
-                    if ($vHp) {
-                        $c->no_hp_terbaru = $vHp;
-                        $enrichedFromVisits++;
-                    }
-                }
-            }
-
-            $c->save();
         }
+
+        // 2. Build lookup map from Visits (only ~1k rows)
+        $visitMap = [];
+        $visits = Visit::whereNotNull('no_hp_snapshot')->where('no_hp_snapshot', '!=', '')->get(['customer_id', 'no_hp_snapshot']);
+        foreach ($visits as $v) {
+            $cleaned = CustomerSyncService::cleanPhoneNumber($v->no_hp_snapshot);
+            if ($cleaned && !empty($v->customer_id)) {
+                $visitMap[$v->customer_id] = $cleaned;
+            }
+        }
+
+        // 3. Process customers in chunks of 1000
+        Customer::chunkById(1000, function ($customers) use (&$cleanedInvalid, &$enrichedFromViseepro, &$enrichedFromVisits, $vpMap, $visitMap) {
+            foreach ($customers as $c) {
+                $currentHp = $c->no_hp_terbaru;
+                $validHp = CustomerSyncService::cleanPhoneNumber($currentHp);
+                $newHp = null;
+                $isDirty = false;
+
+                if ($currentHp && !$validHp) {
+                    $newHp = null;
+                    $cleanedInvalid++;
+                    $isDirty = true;
+                } elseif ($validHp && $validHp !== $currentHp) {
+                    $newHp = $validHp;
+                    $isDirty = true;
+                } else {
+                    $newHp = $currentHp;
+                }
+
+                // If empty, try ViseeproData map
+                if (empty($newHp) && isset($vpMap[$c->nomor_internet])) {
+                    $newHp = $vpMap[$c->nomor_internet];
+                    $enrichedFromViseepro++;
+                    $isDirty = true;
+                }
+
+                // If still empty, try Visit map
+                if (empty($newHp) && isset($visitMap[$c->id])) {
+                    $newHp = $visitMap[$c->id];
+                    $enrichedFromVisits++;
+                    $isDirty = true;
+                }
+
+                if ($isDirty) {
+                    $c->no_hp_terbaru = $newHp;
+                    $c->save();
+                }
+            }
+        });
 
         return [
             'cleaned_invalid'        => $cleanedInvalid,

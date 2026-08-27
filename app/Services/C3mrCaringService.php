@@ -86,31 +86,51 @@ class C3mrCaringService
 
         DB::beginTransaction();
         try {
+            // Pre-load all AR Agents for fast in-memory lookup
+            $agentMap = [];
+            foreach (ArAgent::all() as $ag) {
+                $agentMap[strtoupper($ag->name)] = $ag;
+            }
+
             while (($row = fgetcsv($handle)) !== false) {
                 $total++;
-                $snd = trim((string)($row[$sndIdx] ?? ''));
+                $rawSnd = trim((string)($row[$sndIdx] ?? ''));
+                $snd = CustomerSyncService::cleanSnd($rawSnd);
 
-                if (empty($snd) || !preg_match('/^\d{8,20}$/', $snd)) {
+                if (!$snd) {
                     continue;
                 }
 
-                $customer = Customer::where('nomor_internet', $snd)->first();
-
-                // Cari atau buat AR Agent
+                $rawTgl = trim((string)($row[$tglCaringIdx] ?? ''));
+                $tglCaring = self::parseDate($rawTgl);
+                $voc = !empty($row[$vocIdx]) ? trim((string)$row[$vocIdx]) : null;
+                $statusCaringRaw = !empty($row[$statusCaringIdx]) ? trim((string)$row[$statusCaringIdx]) : null;
+                $petugas = !empty($row[$petugasIdx]) ? trim((string)$row[$petugasIdx]) : null;
                 $agentNameRaw = !empty($row[$collAgentIdx]) ? trim((string)$row[$collAgentIdx]) : null;
+
+                // Hanya proses baris yang memang memiliki data / aktivitas caring
+                if (!$tglCaring && empty($voc) && empty($statusCaringRaw) && empty($petugas)) {
+                    continue;
+                }
+
+                $tglCaring = $tglCaring ?: Carbon::create(2026, 8, 1)->startOfDay();
+                $statusCaring = !empty($statusCaringRaw) ? strtoupper($statusCaringRaw) : 'UNCONTACTED';
+                $statusBayar  = !empty($row[$statusBayarIdx]) ? strtoupper(trim((string)$row[$statusBayarIdx])) : 'UNPAID';
+                $petugasNama  = $petugas ?: ($agentNameRaw ?: 'OBC PRITI');
+                $keterangan   = !empty($row[$ketIdx]) ? trim((string)$row[$ketIdx]) : null;
+
+                // Cari atau buat AR Agent dari in-memory cache
                 $arAgent = null;
                 if ($agentNameRaw) {
                     $canonicalName = ArAgentService::getCanonicalName($agentNameRaw);
-                    $arAgent = ArAgent::firstOrCreate(['name' => $canonicalName], ['is_active' => true]);
+                    $cacheKey = strtoupper($canonicalName);
+                    if (isset($agentMap[$cacheKey])) {
+                        $arAgent = $agentMap[$cacheKey];
+                    } else {
+                        $arAgent = ArAgent::firstOrCreate(['name' => $canonicalName], ['is_active' => true]);
+                        $agentMap[$cacheKey] = $arAgent;
+                    }
                 }
-
-                $statusCaring = !empty($row[$statusCaringIdx]) ? strtoupper(trim((string)$row[$statusCaringIdx])) : 'UNCONTACTED';
-                $voc          = !empty($row[$vocIdx]) ? trim((string)$row[$vocIdx]) : null;
-                $keterangan   = !empty($row[$ketIdx]) ? trim((string)$row[$ketIdx]) : null;
-                $statusBayar  = !empty($row[$statusBayarIdx]) ? strtoupper(trim((string)$row[$statusBayarIdx])) : 'UNPAID';
-                $petugas      = !empty($row[$petugasIdx]) ? trim((string)$row[$petugasIdx]) : ($agentNameRaw ?: 'OBC PRITI');
-                $tglCaring    = self::parseDate($row[$tglCaringIdx] ?? null) ?: Carbon::create(2026, 8, 1)->startOfDay();
-                $noHp         = CustomerSyncService::cleanPhoneNumber($row[$noHpIdx] ?? null) ?: ($customer?->no_hp_terbaru);
 
                 $isPtp = false;
                 if ($voc && (str_contains(strtolower($voc), 'janji') || str_contains(strtolower($voc), 'ptp'))) {
@@ -118,6 +138,7 @@ class C3mrCaringService
                 }
 
                 $jmlBayar = CustomerSyncService::cleanNumeric($row[$jmlBayarIdx] ?? null);
+                $noHp = CustomerSyncService::cleanPhoneNumber($row[$noHpIdx] ?? null);
 
                 $caringLog = CaringLog::where('nomor_internet', $snd)
                     ->whereDate('tanggal_caring', $tglCaring->format('Y-m-d'))
@@ -133,11 +154,10 @@ class C3mrCaringService
                 }
 
                 $caringLog->fill([
-                    'customer_id'     => $customer?->id,
                     'ar_agent_id'     => $arAgent?->id,
-                    'nama_pelanggan'  => $customer?->nama_pelanggan ?: trim((string)($row[$namaIdx] ?? 'Pelanggan ' . $snd)),
+                    'nama_pelanggan'  => trim((string)($row[$namaIdx] ?? 'Pelanggan ' . $snd)),
                     'no_hp'           => $noHp,
-                    'petugas_caring'  => $petugas,
+                    'petugas_caring'  => $petugasNama,
                     'status_caring'   => $statusCaring ?: 'UNCONTACTED',
                     'voc'             => $voc ?: 'General Caring',
                     'keterangan'      => $keterangan,
@@ -157,6 +177,9 @@ class C3mrCaringService
                     $updated++;
                 }
             }
+
+            // Link customer_id ke caring logs yang belum ter-link
+            DB::statement("UPDATE caring_logs SET customer_id = (SELECT id FROM customers WHERE customers.nomor_internet = caring_logs.nomor_internet LIMIT 1) WHERE customer_id IS NULL");
 
             DB::commit();
             fclose($handle);

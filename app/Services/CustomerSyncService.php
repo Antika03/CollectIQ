@@ -49,7 +49,24 @@ class CustomerSyncService
     }
 
     /**
-     * Sinkronisasi data Customer dari file CSV sheet DATA ALL
+     * Normalisasi format SND / Nomor Internet
+     */
+    public static function cleanSnd(?string $snd): ?string
+    {
+        if (empty($snd)) return null;
+        $val = trim((string)$snd);
+        if (is_numeric($val) && (stripos($val, 'e+') !== false || stripos($val, 'e') !== false)) {
+            $val = sprintf('%.0f', (float)$val);
+        }
+        $cleaned = preg_replace('/[^\d]/', '', $val);
+        if (strlen($cleaned) >= 7 && strlen($cleaned) <= 20) {
+            return $cleaned;
+        }
+        return null;
+    }
+
+    /**
+     * Sinkronisasi data Customer dari file CSV sheet DATA ALL (Chunked Batch Upsert)
      */
     public static function syncFromDataAllCsv(string $csvPath): array
     {
@@ -95,80 +112,23 @@ class CustomerSyncService
         $updatedCount = 0;
         $createdCount = 0;
         $totalRows    = 0;
+        $chunkSize    = 1000;
+        $chunkRows    = [];
+
+        $colIndices = compact('sndIdx', 'ncliIdx', 'namaIdx', 'alamatIdx', 'stoIdx', 'datelIdx', 'produkIdx', 'saldoIdx', 'umurIdx', 'noHpIdx', 'cpIdx', 'emailIdx');
 
         DB::beginTransaction();
         try {
             while (($row = fgetcsv($handle)) !== false) {
                 $totalRows++;
-                $snd = trim((string) ($row[$sndIdx] ?? ''));
-
-                if (empty($snd) || !preg_match('/^\d{8,20}$/', $snd)) {
-                    continue;
+                $chunkRows[] = $row;
+                if (count($chunkRows) >= $chunkSize) {
+                    self::processChunk($chunkRows, $updatedCount, $createdCount, $colIndices);
+                    $chunkRows = [];
                 }
-
-                // Ambil nomor HP terbaik (prioritaskan NO HP, lalu CP)
-                $rawHp = !empty($row[$noHpIdx]) ? trim((string)$row[$noHpIdx]) : (!empty($row[$cpIdx]) ? trim((string)$row[$cpIdx]) : null);
-                $validHp = self::cleanPhoneNumber($rawHp);
-
-                $namaPelanggan = !empty($row[$namaIdx]) ? trim((string)$row[$namaIdx]) : null;
-                $alamat        = !empty($row[$alamatIdx]) ? trim((string)$row[$alamatIdx]) : null;
-                $sto           = !empty($row[$stoIdx]) ? trim((string)$row[$stoIdx]) : null;
-                $datel         = !empty($row[$datelIdx]) ? trim((string)$row[$datelIdx]) : null;
-                $produk        = !empty($row[$produkIdx]) ? trim((string)$row[$produkIdx]) : null;
-                $ncli          = !empty($row[$ncliIdx]) ? trim((string)$row[$ncliIdx]) : null;
-                $umurCustomer  = !empty($row[$umurIdx]) ? trim((string)$row[$umurIdx]) : null;
-                $email         = !empty($row[$emailIdx]) ? trim((string)$row[$emailIdx]) : null;
-                $saldo         = $saldoIdx !== null ? self::cleanNumeric($row[$saldoIdx] ?? null) : 0.0;
-
-                $existing = Customer::where('nomor_internet', $snd)->first();
-
-                if ($existing) {
-                    $updateData = [];
-
-                    if (!empty($validHp)) {
-                        $updateData['no_hp_terbaru'] = $validHp;
-                    } elseif (empty($existing->no_hp_terbaru) || !preg_match('/^\d{9,15}$/', $existing->no_hp_terbaru)) {
-                        // Jika HP di DB lama berupa teks tidak valid dan ada nomor di CSV
-                        if (!empty($validHp)) {
-                            $updateData['no_hp_terbaru'] = $validHp;
-                        }
-                    }
-
-                    if (!empty($namaPelanggan) && ($existing->nama_pelanggan === '-' || strlen($namaPelanggan) > strlen($existing->nama_pelanggan))) {
-                        $updateData['nama_pelanggan'] = $namaPelanggan;
-                    }
-
-                    if (!empty($alamat))        $updateData['alamat'] = $alamat;
-                    if (!empty($sto))           $updateData['sto'] = $sto;
-                    if (!empty($datel))         $updateData['datel'] = $datel;
-                    if (!empty($ncli))          $updateData['ncli'] = $ncli;
-                    if (!empty($umurCustomer))  $updateData['umur_customer'] = $umurCustomer;
-                    if (!empty($email))         $updateData['email'] = $email;
-                    if ($saldo > 0)             $updateData['saldo_piutang'] = $saldo;
-                    if (!empty($produk))        $updateData['nama_layanan_internet'] = $produk;
-
-                    if (!empty($updateData)) {
-                        $existing->update($updateData);
-                        $updatedCount++;
-                    }
-                } else {
-                    Customer::create([
-                        'nomor_internet'        => $snd,
-                        'ncli'                  => $ncli,
-                        'nama_pelanggan'        => $namaPelanggan ?: 'Pelanggan ' . $snd,
-                        'alamat'                => $alamat,
-                        'sto'                   => $sto,
-                        'datel'                 => $datel,
-                        'nama_layanan_internet' => $produk ?: 'Internet',
-                        'no_hp_terbaru'         => $validHp,
-                        'email'                 => $email,
-                        'saldo_piutang'         => $saldo,
-                        'umur_customer'         => $umurCustomer,
-                        'risk_score'            => 0,
-                        'risk_level'            => 'low',
-                    ]);
-                    $createdCount++;
-                }
+            }
+            if (!empty($chunkRows)) {
+                self::processChunk($chunkRows, $updatedCount, $createdCount, $colIndices);
             }
 
             DB::commit();
@@ -184,6 +144,112 @@ class CustomerSyncService
             DB::rollBack();
             fclose($handle);
             throw $e;
+        }
+    }
+
+    /**
+     * Proses batch chunk baris CSV ke database
+     */
+    private static function processChunk(array $rows, int &$updatedCount, int &$createdCount, array $colIndices): void
+    {
+        extract($colIndices);
+
+        $snds = [];
+        $parsedRows = [];
+
+        foreach ($rows as $row) {
+            $rawSnd = trim((string)($row[$sndIdx] ?? ''));
+            $snd = self::cleanSnd($rawSnd);
+            if (!$snd) continue;
+
+            $rawHp = !empty($row[$noHpIdx]) ? trim((string)$row[$noHpIdx]) : (!empty($row[$cpIdx]) ? trim((string)$row[$cpIdx]) : null);
+            $validHp = self::cleanPhoneNumber($rawHp);
+
+            $rawNcli = trim((string)($row[$ncliIdx] ?? ''));
+            $ncli = self::cleanSnd($rawNcli);
+
+            $namaPelanggan = !empty($row[$namaIdx]) ? trim((string)$row[$namaIdx]) : null;
+            $alamat        = !empty($row[$alamatIdx]) ? trim((string)$row[$alamatIdx]) : null;
+            $sto           = !empty($row[$stoIdx]) ? trim((string)$row[$stoIdx]) : null;
+            $datel         = !empty($row[$datelIdx]) ? trim((string)$row[$datelIdx]) : null;
+            $produk        = !empty($row[$produkIdx]) ? trim((string)$row[$produkIdx]) : null;
+            $umurCustomer  = !empty($row[$umurIdx]) ? trim((string)$row[$umurIdx]) : null;
+            $email         = !empty($row[$emailIdx]) ? trim((string)$row[$emailIdx]) : null;
+            $saldo         = $saldoIdx !== null ? self::cleanNumeric($row[$saldoIdx] ?? null) : 0.0;
+
+            $snds[] = $snd;
+            $parsedRows[$snd] = [
+                'nomor_internet'        => $snd,
+                'ncli'                  => $ncli,
+                'nama_pelanggan'        => $namaPelanggan ?: 'Pelanggan ' . $snd,
+                'alamat'                => $alamat,
+                'sto'                   => $sto,
+                'datel'                 => $datel,
+                'nama_layanan_internet' => $produk ?: 'Internet',
+                'no_hp_terbaru'         => $validHp,
+                'email'                 => $email,
+                'saldo_piutang'         => $saldo,
+                'umur_customer'         => $umurCustomer,
+            ];
+        }
+
+        if (empty($snds)) return;
+
+        $existing = Customer::whereIn('nomor_internet', array_unique($snds))
+            ->get()
+            ->keyBy('nomor_internet');
+
+        $toInsert = [];
+        $now = now();
+
+        foreach ($parsedRows as $snd => $data) {
+            if ($existing->has($snd)) {
+                $cust = $existing->get($snd);
+                $updates = [];
+
+                if (!empty($data['no_hp_terbaru'])) $updates['no_hp_terbaru'] = $data['no_hp_terbaru'];
+                if (!empty($data['nama_pelanggan']) && ($cust->nama_pelanggan === '-' || strlen($data['nama_pelanggan']) > strlen($cust->nama_pelanggan))) {
+                    $updates['nama_pelanggan'] = $data['nama_pelanggan'];
+                }
+                if (!empty($data['alamat']))        $updates['alamat'] = $data['alamat'];
+                if (!empty($data['sto']))           $updates['sto'] = $data['sto'];
+                if (!empty($data['datel']))         $updates['datel'] = $data['datel'];
+                if (!empty($data['ncli']))          $updates['ncli'] = $data['ncli'];
+                if (!empty($data['umur_customer']))  $updates['umur_customer'] = $data['umur_customer'];
+                if (!empty($data['email']))         $updates['email'] = $data['email'];
+                if ($data['saldo_piutang'] > 0)     $updates['saldo_piutang'] = $data['saldo_piutang'];
+                if (!empty($data['nama_layanan_internet'])) $updates['nama_layanan_internet'] = $data['nama_layanan_internet'];
+
+                if (!empty($updates)) {
+                    $cust->update($updates);
+                    $updatedCount++;
+                }
+            } else {
+                $riskLevel = 'low';
+                $riskScore = 0;
+                if ($data['saldo_piutang'] > 1000000) {
+                    $riskLevel = 'critical';
+                    $riskScore = 75;
+                } elseif ($data['saldo_piutang'] > 500000) {
+                    $riskLevel = 'high';
+                    $riskScore = 50;
+                } elseif ($data['saldo_piutang'] > 100000) {
+                    $riskLevel = 'medium';
+                    $riskScore = 30;
+                }
+
+                $toInsert[] = array_merge($data, [
+                    'risk_score'        => $riskScore,
+                    'risk_level'        => $riskLevel,
+                    'created_at'        => $now,
+                    'updated_at'        => $now,
+                ]);
+                $createdCount++;
+            }
+        }
+
+        if (!empty($toInsert)) {
+            Customer::insert($toInsert);
         }
     }
 }

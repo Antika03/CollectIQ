@@ -10,60 +10,55 @@ class RiskScoreController extends Controller
 {
     public function index(Request $request)
     {
-        $allCustomers = Customer::with(['visits', 'caringLogs'])->get();
+        // 1. KPI Counts via database aggregation (fast)
+        $riskCountsRaw = Customer::selectRaw('LOWER(risk_level) as lvl, COUNT(*) as total')
+            ->groupBy('lvl')
+            ->pluck('total', 'lvl')
+            ->toArray();
 
         $riskCounts = [
-            'CRITICAL' => 0,
-            'HIGH'     => 0,
-            'MEDIUM'   => 0,
-            'LOW'      => 0,
+            'CRITICAL' => $riskCountsRaw['critical'] ?? 0,
+            'HIGH'     => $riskCountsRaw['high'] ?? 0,
+            'MEDIUM'   => $riskCountsRaw['medium'] ?? 0,
+            'LOW'      => ($riskCountsRaw['low'] ?? 0) + ($riskCountsRaw[''] ?? 0),
         ];
 
-        $evaluated = $allCustomers->map(function ($customer) use (&$riskCounts) {
+        $totalCustomers = Customer::count();
+
+        // 2. Query Builder with Search & Filters
+        $query = Customer::query();
+
+        $search = $request->query('search');
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->where('nama_pelanggan', 'like', "%{$search}%")
+                  ->orWhere('nomor_internet', 'like', "%{$search}%")
+                  ->orWhere('no_hp_terbaru', 'like', "%{$search}%")
+                  ->orWhere('datel', 'like', "%{$search}%")
+                  ->orWhere('ncli', 'like', "%{$search}%");
+            });
+        }
+
+        $filterLevel = $request->query('risk_level');
+        if (!empty($filterLevel)) {
+            $query->where('risk_level', strtolower($filterLevel));
+        }
+
+        $query->orderByDesc('risk_score')->orderByDesc('saldo_piutang');
+
+        $customers = $query->with(['visits', 'caringLogs'])
+            ->paginate(20)
+            ->withQueryString();
+
+        // Evaluate detailed metrics for the 20 records on the current page
+        $customers->getCollection()->transform(function ($customer) {
             $eval = ChurnRiskService::evaluateCustomer($customer);
             $customer->risk_score_calc = $eval['score'];
             $customer->risk_level_calc = $eval['level'];
             $customer->risk_reasons    = $eval['reasons'];
             $customer->recommendation  = $eval['recommendation'];
-
-            $riskCounts[$eval['level']] = ($riskCounts[$eval['level']] ?? 0) + 1;
-
             return $customer;
         });
-
-        // Filter / Search
-        $search = $request->query('search');
-        $filterLevel = $request->query('risk_level');
-
-        $filtered = $evaluated;
-
-        if (!empty($search)) {
-            $filtered = $filtered->filter(function ($c) use ($search) {
-                return str_contains(strtolower($c->nama_pelanggan ?? ''), strtolower($search)) ||
-                       str_contains($c->nomor_internet ?? '', $search) ||
-                       str_contains($c->no_hp_terbaru ?? '', $search) ||
-                       str_contains(strtolower($c->datel ?? ''), strtolower($search));
-            });
-        }
-
-        if (!empty($filterLevel)) {
-            $filtered = $filtered->where('risk_level_calc', strtoupper($filterLevel));
-        }
-
-        $sorted = $filtered->sortByDesc('risk_score_calc')->values();
-
-        // Pagination
-        $page = (int) $request->input('page', 1);
-        $perPage = 20;
-        $customers = new \Illuminate\Pagination\LengthAwarePaginator(
-            $sorted->forPage($page, $perPage),
-            $sorted->count(),
-            $perPage,
-            $page,
-            ['path' => $request->url(), 'query' => $request->query()]
-        );
-
-        $totalCustomers = $allCustomers->count();
 
         return view('risk-score.index', compact(
             'customers',
@@ -79,7 +74,22 @@ class RiskScoreController extends Controller
      */
     public function export(Request $request)
     {
-        $allCustomers = Customer::with(['visits', 'caringLogs'])->get();
+        $query = Customer::query();
+
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('nama_pelanggan', 'like', "%{$search}%")
+                  ->orWhere('nomor_internet', 'like', "%{$search}%")
+                  ->orWhere('no_hp_terbaru', 'like', "%{$search}%")
+                  ->orWhere('datel', 'like', "%{$search}%");
+            });
+        }
+        if ($request->filled('risk_level')) {
+            $query->where('risk_level', strtolower($request->risk_level));
+        }
+
+        $query->orderByDesc('risk_score')->orderByDesc('saldo_piutang');
 
         $filename = 'export-risk-score-' . now()->format('Ymd_His') . '.csv';
 
@@ -91,7 +101,7 @@ class RiskScoreController extends Controller
             'Expires'             => '0',
         ];
 
-        return response()->stream(function () use ($allCustomers) {
+        return response()->stream(function () use ($query) {
             $handle = fopen('php://output', 'w');
             fprintf($handle, chr(0xEF).chr(0xBB).chr(0xBF));
 
@@ -109,22 +119,24 @@ class RiskScoreController extends Controller
                 'Faktor Risiko',
             ]);
 
-            foreach ($allCustomers as $c) {
-                $eval = ChurnRiskService::evaluateCustomer($c);
-                fputcsv($handle, [
-                    $c->id,
-                    $c->nomor_internet ?? '',
-                    $c->nama_pelanggan ?? '',
-                    $c->no_hp_terbaru ?? '',
-                    $c->datel ?? '',
-                    $c->saldo_piutang ?? 0,
-                    $c->umur_customer ?? '',
-                    $eval['score'],
-                    $eval['level'],
-                    $eval['recommendation'],
-                    implode('; ', $eval['reasons']),
-                ]);
-            }
+            $query->chunk(100, function ($customers) use ($handle) {
+                foreach ($customers as $c) {
+                    $eval = ChurnRiskService::evaluateCustomer($c);
+                    fputcsv($handle, [
+                        $c->id,
+                        $c->nomor_internet ?? '',
+                        $c->nama_pelanggan ?? '',
+                        $c->no_hp_terbaru ?? '',
+                        $c->datel ?? '',
+                        $c->saldo_piutang ?? 0,
+                        $c->umur_customer ?? '',
+                        $eval['score'],
+                        $eval['level'],
+                        $eval['recommendation'],
+                        implode('; ', $eval['reasons']),
+                    ]);
+                }
+            });
 
             fclose($handle);
         }, 200, $headers);

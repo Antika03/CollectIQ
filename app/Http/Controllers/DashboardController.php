@@ -27,19 +27,16 @@ class DashboardController extends Controller
         $todayPTP       = Visit::whereDate('tanggal_input', today())->where('is_ptp', true)->count();
 
         // 2. Churn Risk & Action Required Matrix
-        $allCustomers = Customer::all();
-        $criticalCount = 0;
-        $highCount     = 0;
-        $mediumCount   = 0;
-        $lowCount      = 0;
+        $riskCounts = Customer::selectRaw('LOWER(risk_level) as lvl, COUNT(*) as total')
+            ->groupBy('lvl')
+            ->pluck('total', 'lvl')
+            ->toArray();
 
-        foreach ($allCustomers as $c) {
-            $eval = ChurnRiskService::evaluateCustomer($c);
-            if ($eval['level'] === 'CRITICAL') $criticalCount++;
-            elseif ($eval['level'] === 'HIGH') $highCount++;
-            elseif ($eval['level'] === 'MEDIUM') $mediumCount++;
-            else $lowCount++;
-        }
+        $criticalCount = $riskCounts['critical'] ?? 0;
+        $highCount     = $riskCounts['high'] ?? 0;
+        $mediumCount   = $riskCounts['medium'] ?? 0;
+        $lowCount      = ($riskCounts['low'] ?? 0) + ($riskCounts[''] ?? 0);
+
 
         // 3. Chart: Trend Visit & PTP 14 Hari Terakhir
         $rangeStart = Carbon::today()->subDays(13);

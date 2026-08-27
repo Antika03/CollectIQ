@@ -162,37 +162,105 @@ class C3mrSyncService
     }
 
     /**
+     * Unduh master workbook XLSX dari Google Spreadsheet dan ekstrak seluruh tab ke file CSV lokal
+     */
+    public static function downloadAndExtractMasterWorkbook(): array
+    {
+        self::ensureStorageDir();
+        $sheetId = self::getActiveSpreadsheetId();
+        $xlsxPath = storage_path('app/c3mr_master.xlsx');
+
+        Log::info("[C3MR Sync] Mengunduh master workbook C3MR (Sheet ID: {$sheetId})...");
+
+        $downloadSuccess = false;
+
+        // Metode 1: Export format=xlsx langsung dari Google Docs
+        $xlsxUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=xlsx";
+        try {
+            $response = Http::timeout(60)->get($xlsxUrl);
+            if ($response->successful() && strlen($response->body()) > 2000) {
+                file_put_contents($xlsxPath, $response->body());
+                $downloadSuccess = true;
+                Log::info('[C3MR Sync] Berhasil mengunduh master XLSX via Google Docs export (' . round(strlen($response->body())/1024/1024, 2) . ' MB)');
+            }
+        } catch (\Throwable $e) {
+            Log::warning('[C3MR Sync] Google Docs export format=xlsx gagal: ' . $e->getMessage());
+        }
+
+        // Metode 2: Fallback direct Google Drive download jika format=xlsx gagal
+        if (!$downloadSuccess) {
+            $driveUrl = "https://drive.google.com/uc?id={$sheetId}&export=download";
+            try {
+                $response = Http::timeout(60)->get($driveUrl);
+                if ($response->successful() && strlen($response->body()) > 2000) {
+                    file_put_contents($xlsxPath, $response->body());
+                    $downloadSuccess = true;
+                    Log::info('[C3MR Sync] Berhasil mengunduh master XLSX via Google Drive direct download (' . round(strlen($response->body())/1024/1024, 2) . ' MB)');
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[C3MR Sync] Google Drive direct download gagal: ' . $e->getMessage());
+            }
+        }
+
+        if (!$downloadSuccess && !file_exists($xlsxPath)) {
+            throw new \Exception("Gagal mengunduh file spreadsheet C3MR dari Google. Pastikan Spreadsheet ID valid dan izin sharing terbuka (Viewer).");
+        }
+
+        // Ekstrak seluruh sheet yang dibutuhkan
+        $sheetsToExtract = [
+            'DATA ALL'           => storage_path('app/sheet_data-all.csv'),
+            'Report PRQ'         => storage_path('app/sheet_report-prq.csv'),
+            'VISEEPRO'           => storage_path('app/sheet_viseepro.csv'),
+            'HASIL CARING'       => storage_path('app/sheet_hasil-caring.csv'),
+            'PERFORMANSI DETAIL' => storage_path('app/sheet_performansi-detail.csv'),
+        ];
+
+        $extracted = [];
+        foreach ($sheetsToExtract as $sheetName => $csvPath) {
+            try {
+                $res = XlsxSheetExtractor::extractSheetToCsv($xlsxPath, $sheetName, $csvPath);
+                $extracted[$sheetName] = $res;
+                Log::info("[C3MR Sync] Ekstrak sheet '{$sheetName}' berhasil: {$res['total_rows']} baris ({$res['duration_sec']}s)");
+            } catch (\Throwable $e) {
+                Log::warning("[C3MR Sync] Gagal mengekstrak sheet '{$sheetName}': " . $e->getMessage());
+            }
+        }
+
+        return $extracted;
+    }
+
+    /**
      * 1. SINKRONISASI REPORT PRQ (Visit, Pelanggan, AR Agent)
      */
     public static function syncReportPrq(): array
     {
         self::ensureStorageDir();
         $sheetId = self::getActiveSpreadsheetId();
-        $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=1303511230";
         $csvFile = storage_path('app/sheet_report-prq.csv');
 
         Log::info("[C3MR Sync] Memulai sinkronisasi Report PRQ (Sheet ID: {$sheetId})...");
 
-        try {
-            $response = Http::timeout(45)->get($csvUrl);
-            if ($response->successful() && strlen($response->body()) > 20) {
-                file_put_contents($csvFile, $response->body());
-                Log::info('[C3MR Sync] Berhasil mengunduh Report PRQ dari Google Spreadsheet (HTTP ' . $response->status() . ')');
-            } elseif (!file_exists($csvFile)) {
-                throw new \Exception("Gagal mengunduh Report PRQ dari spreadsheet (HTTP " . $response->status() . ").");
+        if (!file_exists($csvFile)) {
+            $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=1303511230";
+            try {
+                $response = Http::timeout(45)->get($csvUrl);
+                if ($response->successful() && strlen($response->body()) > 20) {
+                    file_put_contents($csvFile, $response->body());
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[C3MR Sync] Report PRQ direct CSV export gagal: ' . $e->getMessage());
             }
-        } catch (\Throwable $e) {
-            if (!file_exists($csvFile)) {
-                Log::error('[C3MR Sync] Report PRQ gagal: ' . $e->getMessage());
-                return [
-                    'success' => false,
-                    'label'   => 'Report PRQ',
-                    'count'   => 0,
-                    'message' => 'Gagal mengambil data Report PRQ: ' . $e->getMessage(),
-                    'error'   => $e->getMessage(),
-                ];
-            }
-            Log::warning('[C3MR Sync] Report PRQ menggunakan cache lokal terakhir: ' . $e->getMessage());
+        }
+
+        if (!file_exists($csvFile)) {
+            Log::error('[C3MR Sync] Report PRQ CSV tidak ditemukan');
+            return [
+                'success' => false,
+                'label'   => 'Report PRQ',
+                'count'   => 0,
+                'message' => 'Gagal mengambil data Report PRQ',
+                'error'   => 'File sheet_report-prq.csv not found',
+            ];
         }
 
         try {
@@ -229,31 +297,31 @@ class C3mrSyncService
     {
         self::ensureStorageDir();
         $sheetId = self::getActiveSpreadsheetId();
-        $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=172624186";
         $csvFile = storage_path('app/sheet_viseepro.csv');
 
         Log::info("[C3MR Sync] Memulai sinkronisasi VISEEPRO (Sheet ID: {$sheetId})...");
 
-        try {
-            $response = Http::timeout(45)->get($csvUrl);
-            if ($response->successful() && strlen($response->body()) > 20) {
-                file_put_contents($csvFile, $response->body());
-                Log::info('[C3MR Sync] Berhasil mengunduh VISEEPRO dari Google Spreadsheet (HTTP ' . $response->status() . ')');
-            } elseif (!file_exists($csvFile)) {
-                throw new \Exception("Gagal mengunduh VISEEPRO dari spreadsheet (HTTP " . $response->status() . ").");
+        if (!file_exists($csvFile)) {
+            $csvUrl = "https://docs.google.com/spreadsheets/d/{$sheetId}/export?format=csv&gid=172624186";
+            try {
+                $response = Http::timeout(45)->get($csvUrl);
+                if ($response->successful() && strlen($response->body()) > 20) {
+                    file_put_contents($csvFile, $response->body());
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[C3MR Sync] VISEEPRO direct CSV export gagal: ' . $e->getMessage());
             }
-        } catch (\Throwable $e) {
-            if (!file_exists($csvFile)) {
-                Log::error('[C3MR Sync] VISEEPRO gagal: ' . $e->getMessage());
-                return [
-                    'success' => false,
-                    'label'   => 'VISEEPRO',
-                    'count'   => 0,
-                    'message' => 'Gagal mengambil data VISEEPRO: ' . $e->getMessage(),
-                    'error'   => $e->getMessage(),
-                ];
-            }
-            Log::warning('[C3MR Sync] VISEEPRO menggunakan cache lokal terakhir: ' . $e->getMessage());
+        }
+
+        if (!file_exists($csvFile)) {
+            Log::error('[C3MR Sync] VISEEPRO CSV tidak ditemukan');
+            return [
+                'success' => false,
+                'label'   => 'VISEEPRO',
+                'count'   => 0,
+                'message' => 'Gagal mengambil data VISEEPRO',
+                'error'   => 'File sheet_viseepro.csv not found',
+            ];
         }
 
         try {
@@ -290,38 +358,34 @@ class C3mrSyncService
     {
         self::ensureStorageDir();
         $sheetId = self::getActiveSpreadsheetId();
-        $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
         $csvPath = storage_path('app/sheet_data-all.csv');
 
         Log::info("[C3MR Sync] Memulai sinkronisasi C3MR Sheet DATA ALL (Sheet ID: {$sheetId})...");
 
-        try {
-            $response = Http::timeout(45)->get($url);
-            if ($response->successful() && strlen($response->body()) > 20) {
-                file_put_contents($csvPath, $response->body());
-                Log::info('[C3MR Sync] Berhasil mengunduh Sheet DATA ALL dari Google Spreadsheet (HTTP ' . $response->status() . ')');
-            } elseif (!file_exists($csvPath)) {
-                throw new \Exception("Gagal mengunduh Sheet DATA ALL dari spreadsheet (HTTP " . $response->status() . ").");
+        if (!file_exists($csvPath)) {
+            try {
+                self::downloadAndExtractMasterWorkbook();
+            } catch (\Throwable $e) {
+                Log::warning('[C3MR Sync] Download master workbook gagal: ' . $e->getMessage());
             }
-        } catch (\Throwable $e) {
-            if (!file_exists($csvPath)) {
-                Log::error('[C3MR Sync] Sheet DATA ALL gagal: ' . $e->getMessage());
-                return [
-                    'success' => false,
-                    'label'   => 'C3MR Master Data (DATA ALL)',
-                    'count'   => 0,
-                    'message' => 'Gagal mengambil Sheet DATA ALL: ' . $e->getMessage(),
-                    'error'   => $e->getMessage(),
-                ];
-            }
-            Log::warning('[C3MR Sync] DATA ALL menggunakan cache lokal terakhir: ' . $e->getMessage());
+        }
+
+        if (!file_exists($csvPath)) {
+            Log::error('[C3MR Sync] File sheet_data-all.csv tidak ditemukan');
+            return [
+                'success' => false,
+                'label'   => 'C3MR Master Data (DATA ALL)',
+                'count'   => 0,
+                'message' => 'Sumber data master pelanggan (DATA ALL) belum tersedia.',
+                'error'   => 'File sheet_data-all.csv not found',
+            ];
         }
 
         try {
             $res = CustomerSyncService::syncFromDataAllCsv($csvPath);
             CustomerPhoneEnricher::enrichPhoneNumbers();
 
-            Log::info("[C3MR Sync] DATA ALL selesai diproses: {$res['total_rows_processed']} baris (Updated: {$res['updated_customers']}, Created: {$res['created_customers']})");
+            Log::info("[C3MR Sync] DATA ALL selesai diproses: {$res['total_rows_processed']} baris (Updated: {$res['updated_customers']}, Created: {$res['created_customers']}, Total Customers: {$res['total_customers_now']})");
 
             return [
                 'success' => true,
@@ -330,7 +394,7 @@ class C3mrSyncService
                 'created' => $res['created_customers'] ?? 0,
                 'updated' => $res['updated_customers'] ?? 0,
                 'total'   => $res['total_customers_now'] ?? Customer::count(),
-                'message' => "{$res['total_rows_processed']} master pelanggan & saldo piutang diperbarui",
+                'message' => "{$res['total_rows_processed']} master data diproses ({$res['total_customers_now']} pelanggan terdaftar)",
                 'error'   => null,
             ];
         } catch (\Throwable $e) {
@@ -351,20 +415,15 @@ class C3mrSyncService
     public static function syncCaring(): array
     {
         self::ensureStorageDir();
-        $sheetId = self::getActiveSpreadsheetId();
         $csvPath = storage_path('app/sheet_data-all.csv');
 
         Log::info('[C3MR Sync] Memulai sinkronisasi C3MR Hasil Caring...');
 
         if (!file_exists($csvPath)) {
-            $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('DATA ALL');
             try {
-                $response = Http::timeout(45)->get($url);
-                if ($response->successful() && strlen($response->body()) > 20) {
-                    file_put_contents($csvPath, $response->body());
-                }
+                self::downloadAndExtractMasterWorkbook();
             } catch (\Throwable $e) {
-                // Ignore download error, will check file_exists below
+                Log::warning('[C3MR Sync] Download master workbook gagal: ' . $e->getMessage());
             }
         }
 
@@ -413,31 +472,27 @@ class C3mrSyncService
     {
         self::ensureStorageDir();
         $sheetId = self::getActiveSpreadsheetId();
-        $url = "https://docs.google.com/spreadsheets/d/{$sheetId}/gviz/tq?tqx=out:csv&sheet=" . urlencode('PERFORMANSI DETAIL');
         $csvPath = storage_path('app/sheet_performansi-detail.csv');
 
         Log::info("[C3MR Sync] Memulai sinkronisasi C3MR Performansi Witel (Sheet ID: {$sheetId})...");
 
-        try {
-            $response = Http::timeout(45)->get($url);
-            if ($response->successful() && strlen($response->body()) > 20) {
-                file_put_contents($csvPath, $response->body());
-                Log::info('[C3MR Sync] Berhasil mengunduh PERFORMANSI DETAIL dari Google Spreadsheet (HTTP ' . $response->status() . ')');
-            } elseif (!file_exists($csvPath)) {
-                throw new \Exception("Gagal mengunduh Sheet PERFORMANSI DETAIL dari spreadsheet (HTTP " . $response->status() . ").");
+        if (!file_exists($csvPath)) {
+            try {
+                self::downloadAndExtractMasterWorkbook();
+            } catch (\Throwable $e) {
+                Log::warning('[C3MR Sync] Download master workbook gagal: ' . $e->getMessage());
             }
-        } catch (\Throwable $e) {
-            if (!file_exists($csvPath)) {
-                Log::error('[C3MR Sync] PERFORMANSI DETAIL gagal: ' . $e->getMessage());
-                return [
-                    'success' => false,
-                    'label'   => 'C3MR Performansi Witel',
-                    'count'   => 0,
-                    'message' => 'Gagal mengambil Sheet PERFORMANSI DETAIL: ' . $e->getMessage(),
-                    'error'   => $e->getMessage(),
-                ];
-            }
-            Log::warning('[C3MR Sync] PERFORMANSI DETAIL menggunakan cache lokal terakhir: ' . $e->getMessage());
+        }
+
+        if (!file_exists($csvPath)) {
+            Log::error('[C3MR Sync] PERFORMANSI DETAIL CSV tidak ditemukan');
+            return [
+                'success' => false,
+                'label'   => 'C3MR Performansi Witel',
+                'count'   => 0,
+                'message' => 'Gagal mengambil Sheet PERFORMANSI DETAIL',
+                'error'   => 'File sheet_performansi-detail.csv not found',
+            ];
         }
 
         try {
@@ -529,6 +584,13 @@ class C3mrSyncService
 
         Log::info('====================================================');
         Log::info('[C3MR Sync] MASTER SYNC DIMULAI pada ' . $syncTimestamp->toDateTimeString());
+
+        // 0. Unduh dan ekstrak master workbook XLSX sekali untuk seluruh sheet
+        try {
+            self::downloadAndExtractMasterWorkbook();
+        } catch (\Throwable $e) {
+            Log::warning('[C3MR Sync] Download master workbook warning: ' . $e->getMessage());
+        }
 
         // Jalankan seluruh proses sinkronisasi
         $results = [
