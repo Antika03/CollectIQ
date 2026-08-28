@@ -195,9 +195,15 @@
                                     <div style="font-size:11px; color:var(--ink-400);">{{ $log->umur_customer ?: '-' }}</div>
                                 </td>
                                 <td>
-                                    <code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">
-                                        {{ $log->nomor_internet }}
-                                    </code>
+                                    <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $log->nomor_internet }}" data-masked="true">
+                                        <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                                        <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
+                                        <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $log->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                                            <i class="bi bi-copy"></i>
+                                        </button>
+                                    </div>
                                 </td>
                                 <td style="font-size:12px; color:var(--ink-700); white-space:nowrap;">
                                     @if($log->customer && $log->customer->wa_url)

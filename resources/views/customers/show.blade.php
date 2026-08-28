@@ -1,7 +1,7 @@
 @extends('layouts.app')
 
 @section('title', $customer->nama_pelanggan ?: 'Customer Profile 360')
-@section('subtitle', 'Customer 360 Intelligence — No. Internet: ' . $customer->nomor_internet)
+@section('subtitle', 'Customer 360 Intelligence — Profil & Riwayat Penagihan')
 
 @section('content')
 
@@ -49,8 +49,14 @@
             <div class="row row-cols-1 row-cols-sm-2 g-3">
                 <div>
                     <div style="font-size:11px; color:var(--ink-400); font-weight:700; text-transform:uppercase;">No. Internet (SND)</div>
-                    <div style="font-size:14.5px; font-weight:700; color:var(--ink-900);">
-                        <code>{{ $customer->nomor_internet }}</code>
+                    <div class="d-flex align-items-center gap-1 mt-1 masked-snd-wrapper" data-snd="{{ $customer->nomor_internet }}" data-masked="true">
+                        <code class="masked-snd-text" style="background:var(--secondary); padding:2px 8px; border-radius:6px; font-size:13.5px; font-weight:700; color:var(--ink-900);">••••••••••</code>
+                        <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                        <button type="button" class="btn btn-link p-0 text-muted" style="font-size:12px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $customer->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                            <i class="bi bi-copy"></i>
+                        </button>
                     </div>
                 </div>
 
@@ -399,8 +405,16 @@
                 @csrf
                 <div class="modal-body" style="padding:20px;">
                     <div class="p-3 mb-3" style="background:#F8FAFC; border:1px solid var(--border); border-radius:10px;">
-                        <div style="font-weight:700; color:var(--ink-900); font-size:13.5px;">{{ $customer->nama_pelanggan }}</div>
-                        <div style="font-size:12px; color:var(--ink-500);">SND: <code>{{ $customer->nomor_internet }}</code> | Saldo: <strong style="color:var(--primary);">Rp {{ number_format($customer->saldo_piutang, 0, ',', '.') }}</strong></div>
+                        <div class="d-flex align-items-center gap-1 mt-1" style="font-size:12px; color:var(--ink-500);">
+                            <span>SND:</span>
+                            <div class="d-inline-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $customer->nomor_internet }}" data-masked="true">
+                                <code class="masked-snd-text" style="background:var(--secondary); padding:1px 5px; border-radius:4px;">••••••••••</code>
+                                <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            </div>
+                            <span>| Saldo: <strong style="color:var(--primary);">Rp {{ number_format($customer->saldo_piutang, 0, ',', '.') }}</strong></span>
+                        </div>
                         <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;">Alamat: {{ $customer->alamat ?: ($customer->datel ?: '-') }}</div>
                     </div>
 

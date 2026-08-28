@@ -104,7 +104,7 @@
                                     @elseif($idx == 2)
                                         <span class="badge" style="background:#FDE7D9; color:#9A3412; font-size:11px;">#3</span>
                                     @else
-                                        #{{ $idx + 1 }}
+                                        #{{ (int)$idx + 1 }}
                                     @endif
                                 </td>
                                 <td style="font-weight:600; color:var(--ink-900);">
@@ -219,9 +219,15 @@
                             </div>
                         </td>
                         <td>
-                            <code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">
-                                {{ $c->nomor_internet }}
-                            </code>
+                            <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $c->nomor_internet }}" data-masked="true">
+                                <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                                <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $c->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                                    <i class="bi bi-copy"></i>
+                                </button>
+                            </div>
                             <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;">
                                 @if($c->wa_url)
                                     <a href="{{ $c->wa_url }}" target="_blank" class="text-success text-decoration-none fw-semibold" title="Kirim WhatsApp Otomatis" data-bs-toggle="tooltip">

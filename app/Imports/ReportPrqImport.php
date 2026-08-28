@@ -110,48 +110,10 @@ class ReportPrqImport implements ToCollection
                 }
             }
 
-            // Tanggal Input
-            $tanggalInput = \App\Services\PritiSyncService::parseInputDate($row[1] ?? null);
-
-            // Hasil Visit & PTP
-            $hasilVisit = !empty($row[7]) ? trim((string)$row[7]) : 'Belum Diisi';
-            $kategoriVisit = !empty($row[8]) ? DataNormalizerService::normalizeVisitCategory($row[8]) : '-';
-            $isPtp = str_contains(strtolower($hasilVisit), 'janji') ||
-                     str_contains(strtolower($kategoriVisit), 'janji') ||
-                     str_contains(strtolower($kategoriVisit), 'jb') ||
-                     str_contains(strtolower($hasilVisit), 'ptp');
-
-            $collectId = 'PRQ-' . $snd . '-' . $tanggalInput->format('Ymd');
-
-            $visit = Visit::updateOrCreate(
-                [
-                    'collect_id' => $collectId,
-                ],
-                [
-                    'customer_id'          => $customer->id,
-                    'ar_agent_id'          => $arAgent?->id,
-                    'tanggal_input'        => $tanggalInput,
-                    'hasil_visit'          => $hasilVisit,
-                    'kategori_visit'       => $kategoriVisit,
-                    'keterangan_visit'     => !empty($row[9]) ? trim((string)$row[9]) : '-',
-                    'foto_url'             => !empty($row[10]) ? trim((string)$row[10]) : null,
-                    'no_hp_snapshot'       => $cleanHp ?: $rawHp,
-                    'tipe_hunian_snapshot' => $tipeHunian,
-                    'is_ptp'               => $isPtp,
-                ]
-            );
-
-            $customer->update([
-                'last_visit_at' => $tanggalInput,
-                'total_visits'  => $customer->visits()->count(),
-            ]);
+            // Catatan: Report PRQ tidak lagi menulis ke tabel visits
+            // PRITI Collection adalah Single Source of Truth untuk tabel visits.
 
             $this->processedCount++;
-            if ($visit->wasRecentlyCreated) {
-                $this->createdVisits++;
-            } else {
-                $this->updatedVisits++;
-            }
         }
     }
 }

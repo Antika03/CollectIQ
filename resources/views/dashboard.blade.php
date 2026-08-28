@@ -149,7 +149,7 @@
                         <div class="d-flex justify-content-between align-items-center mb-1">
                             <div class="d-flex align-items-center gap-2">
                                 <span class="badge {{ $idx == 0 ? 'bg-warning text-dark' : ($idx == 1 ? 'bg-secondary text-white' : 'bg-light text-dark') }}" style="font-size:11px; border-radius:6px; padding:2px 6px;">
-                                    #{{ $idx + 1 }}
+                                    #{{ (int)$idx + 1 }}
                                 </span>
                                 <span style="font-size:13px; font-weight:700; color:var(--ink-900);">{{ $agent->name }}</span>
                             </div>
@@ -201,8 +201,11 @@
                                     <div style="font-size:11px; color:var(--ink-400);">{{ $c->datel ?: 'Wilayah Telkom' }}</div>
                                 </td>
                                 <td>
-                                    <div class="d-flex align-items-center gap-1">
-                                        <code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">{{ $c->nomor_internet }}</code>
+                                    <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $c->nomor_internet }}" data-masked="true">
+                                        <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                                        <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                            <i class="bi bi-eye"></i>
+                                        </button>
                                         <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $c->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
                                             <i class="bi bi-copy"></i>
                                         </button>

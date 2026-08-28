@@ -175,9 +175,17 @@
                             </div>
                         </td>
                         <td>
-                            <code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">
-                                {{ $ptp->customer->nomor_internet ?? '-' }}
-                            </code>
+                            <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $ptp->customer->nomor_internet ?? '' }}" data-masked="true">
+                                <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                                @if(!empty($ptp->customer?->nomor_internet))
+                                    <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                        <i class="bi bi-eye"></i>
+                                    </button>
+                                    <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $ptp->customer->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                                        <i class="bi bi-copy"></i>
+                                    </button>
+                                @endif
+                            </div>
                         </td>
                         <td style="font-size:12px; color:var(--ink-700); white-space:nowrap;">
                             @if($ptp->customer && $ptp->customer->wa_url)

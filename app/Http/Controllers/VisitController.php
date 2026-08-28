@@ -39,20 +39,22 @@ class VisitController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 2. KPI Metrics (Cached 60 detik)
+        | 2. KPI Metrics (Cached 60 detik) — Sumber: PRITI DATA Collection
         |--------------------------------------------------------------------------
         */
         $kpis = \Illuminate\Support\Facades\Cache::remember('visit_kpi_summary', 60, function () {
-            $totalVisit       = Visit::count();
-            $visitHariIni     = Visit::whereDate('tanggal_input', today())->count();
-            $totalPtp         = Visit::where('is_ptp', true)->count();
-            $ptpHariIni       = Visit::whereDate('tanggal_input', today())->where('is_ptp', true)->count();
-            $contactedCount   = Visit::whereNotNull('hasil_visit')
+            $baseVisit = Visit::where('collect_id', 'not like', 'PRQ-%');
+
+            $totalVisit       = (clone $baseVisit)->count();
+            $visitHariIni     = (clone $baseVisit)->whereDate('tanggal_input', today())->count();
+            $totalPtp         = (clone $baseVisit)->where('is_ptp', true)->count();
+            $ptpHariIni       = (clone $baseVisit)->whereDate('tanggal_input', today())->where('is_ptp', true)->count();
+            $contactedCount   = (clone $baseVisit)->whereNotNull('hasil_visit')
                                     ->where('hasil_visit', '!=', '')
                                     ->where('hasil_visit', '!=', 'Belum Diisi')
                                     ->where('hasil_visit', '!=', '-')
                                     ->count();
-            $notContactedCount = Visit::where(function ($q) {
+            $notContactedCount = (clone $baseVisit)->where(function ($q) {
                 $q->whereNull('hasil_visit')
                   ->orWhere('hasil_visit', '')
                   ->orWhere('hasil_visit', 'Belum Diisi')
@@ -77,13 +79,15 @@ class VisitController extends Controller
         $chartData = \Illuminate\Support\Facades\Cache::remember('visit_chart_trend', 60, function () {
             $rangeStart = Carbon::today()->subDays(13);
 
-            $dailyRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
+            $dailyRaw = Visit::where('collect_id', 'not like', 'PRQ-%')
+                ->whereDate('tanggal_input', '>=', $rangeStart)
                 ->selectRaw('tanggal_input, COUNT(*) as total')
                 ->groupBy('tanggal_input')
                 ->pluck('total', 'tanggal_input')
                 ->toArray();
 
-            $dailyPtpRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
+            $dailyPtpRaw = Visit::where('collect_id', 'not like', 'PRQ-%')
+                ->whereDate('tanggal_input', '>=', $rangeStart)
                 ->where('is_ptp', true)
                 ->selectRaw('tanggal_input, COUNT(*) as total')
                 ->groupBy('tanggal_input')
@@ -115,7 +119,8 @@ class VisitController extends Controller
         |--------------------------------------------------------------------------
         */
         $extraStats = \Illuminate\Support\Facades\Cache::remember('visit_extra_stats', 60, function () {
-            $hasilDistribution = Visit::whereNotNull('hasil_visit')
+            $hasilDistribution = Visit::where('collect_id', 'not like', 'PRQ-%')
+                ->whereNotNull('hasil_visit')
                 ->where('hasil_visit', '!=', '')
                 ->selectRaw('hasil_visit, COUNT(*) as total')
                 ->groupBy('hasil_visit')
@@ -123,7 +128,9 @@ class VisitController extends Controller
                 ->take(8)
                 ->get();
 
-            $agentStats = ArAgent::withCount('visits')
+            $agentStats = ArAgent::withCount(['visits' => function ($vq) {
+                $vq->where('collect_id', 'not like', 'PRQ-%');
+            }])
                 ->orderByDesc('visits_count')
                 ->take(8)
                 ->get();
@@ -136,10 +143,11 @@ class VisitController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 5. Query utama Visit dengan filter (Optimized)
+        | 5. Query utama Visit dengan filter (Single Source of Truth: PRITI Collection)
         |--------------------------------------------------------------------------
         */
         $query = Visit::with(['customer', 'arAgent'])
+            ->where('collect_id', 'not like', 'PRQ-%')
             ->latest('tanggal_input')
             ->latest('id');
 
@@ -283,6 +291,7 @@ class VisitController extends Controller
     public function export(Request $request)
     {
         $query = Visit::with(['customer', 'arAgent'])
+            ->where('collect_id', 'not like', 'PRQ-%')
             ->latest('tanggal_input')
             ->latest('id');
 

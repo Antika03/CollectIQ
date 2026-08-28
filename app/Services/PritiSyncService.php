@@ -51,7 +51,17 @@ class PritiSyncService
             return $base->addDays((int)$days)->startOfDay();
         }
 
-        // Coba parse format d/m/Y, d/m/Y H:i:s, Y-m-d
+        // Coba regex format tanggal Indonesia d/m/Y atau dd-mm-yyyy
+        if (preg_match('/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/', $valStr, $m)) {
+            $day   = (int)$m[1];
+            $month = (int)$m[2];
+            $year  = (int)$m[3];
+            if (checkdate($month, $day, $year)) {
+                return Carbon::create($year, $month, $day)->startOfDay();
+            }
+        }
+
+        // Coba format standar d/m/Y, Y-m-d
         $formats = [
             'd/m/Y', 'j/n/Y', 'd/n/Y', 'j/m/Y',
             'd/m/Y H:i:s', 'd/m/Y H:i', 'j/n/Y H:i:s',
@@ -61,7 +71,10 @@ class PritiSyncService
 
         foreach ($formats as $fmt) {
             try {
-                return Carbon::createFromFormat($fmt, $valStr)->startOfDay();
+                $parsed = Carbon::createFromFormat($fmt, $valStr);
+                if ($parsed !== false) {
+                    return $parsed->startOfDay();
+                }
             } catch (\Throwable $e) {
                 // coba format berikutnya
             }
@@ -225,12 +238,12 @@ class PritiSyncService
                 $rawAr = $item['rawAr'];
                 $chatId = $item['chatId'];
 
-                // 1. AR Agent lookup / creation
+                // 1. AR Agent lookup / creation (case-insensitive & safe)
                 $arAgent = null;
                 if ($rawAr) {
                     $canonicalAr = DataNormalizerService::normalizeArName($rawAr);
                     if ($canonicalAr) {
-                        $key = strtoupper($canonicalAr);
+                        $key = strtoupper(trim($canonicalAr));
                         if (isset($agentCache[$key])) {
                             $arAgent = $agentCache[$key];
                             if (!empty($chatId) && empty($arAgent->chat_id_telegram)) {
@@ -238,11 +251,14 @@ class PritiSyncService
                                 $arAgent->save();
                             }
                         } else {
-                            $arAgent = ArAgent::firstOrCreate(
-                                ['name' => $canonicalAr],
-                                ['chat_id_telegram' => $chatId, 'is_active' => true]
-                            );
-                            if (!empty($chatId) && empty($arAgent->chat_id_telegram)) {
+                            $arAgent = ArAgent::whereRaw('LOWER(name) = ?', [strtolower($canonicalAr)])->first();
+                            if (!$arAgent) {
+                                $arAgent = ArAgent::create([
+                                    'name'              => $canonicalAr,
+                                    'chat_id_telegram'  => $chatId,
+                                    'is_active'         => true,
+                                ]);
+                            } elseif (!empty($chatId) && empty($arAgent->chat_id_telegram)) {
                                 $arAgent->chat_id_telegram = $chatId;
                                 $arAgent->save();
                             }
@@ -293,6 +309,10 @@ class PritiSyncService
                          str_contains(strtolower($kategoriVisit), 'jb') ||
                          str_contains(strtolower($hasilVisit), 'ptp');
 
+                $hpSnapshot = $cleanHp ?: $item['rawHp'];
+                $safeHpSnapshot = $hpSnapshot ? mb_substr((string)$hpSnapshot, 0, 255) : null;
+                $safeHunian = $item['tipeHunian'] ? mb_substr((string)$item['tipeHunian'], 0, 255) : null;
+
                 $existingVisit = $existingVisits->get($collectId);
 
                 if ($existingVisit) {
@@ -304,8 +324,8 @@ class PritiSyncService
                         'kategori_visit'       => $kategoriVisit,
                         'keterangan_visit'     => $item['keterangan'],
                         'foto_url'             => $item['fotoUrl'],
-                        'no_hp_snapshot'       => $cleanHp ?: $item['rawHp'],
-                        'tipe_hunian_snapshot' => $item['tipeHunian'],
+                        'no_hp_snapshot'       => $safeHpSnapshot,
+                        'tipe_hunian_snapshot' => $safeHunian,
                         'is_ptp'               => $isPtp,
                     ]);
                     $updatedVisits++;
@@ -319,8 +339,8 @@ class PritiSyncService
                         'kategori_visit'       => $kategoriVisit,
                         'keterangan_visit'     => $item['keterangan'],
                         'foto_url'             => $item['fotoUrl'],
-                        'no_hp_snapshot'       => $cleanHp ?: $item['rawHp'],
-                        'tipe_hunian_snapshot' => $item['tipeHunian'],
+                        'no_hp_snapshot'       => $safeHpSnapshot,
+                        'tipe_hunian_snapshot' => $safeHunian,
                         'is_ptp'               => $isPtp,
                     ]);
                     $existingVisits->put($collectId, $newVisit);
@@ -330,12 +350,13 @@ class PritiSyncService
                 $processedVisits++;
             }
 
+            // Bersihkan data kunjungan yang sempat terbuat oleh PRQ agar PRITI Collection menjadi murni Single Source of Truth
+            Visit::where('collect_id', 'like', 'PRQ-%')->delete();
+
             DB::commit();
 
-            // Clear KPI caches so UI reflects new dates immediately
-            \Illuminate\Support\Facades\Cache::forget('visit_kpis');
-            \Illuminate\Support\Facades\Cache::forget('visit_chart_trend');
-            \Illuminate\Support\Facades\Cache::forget('dashboard_kpis');
+            // Clear all KPI & analytics caches so UI reflects new dates immediately
+            \App\Helpers\CacheHelper::clearDashboardCaches();
 
             $duration = round(microtime(true) - $startTime, 2);
             Log::info("[PRITI Sync] Selesai ({$duration}s): {$processedVisits} kunjungan dari {$totalRows} baris (Created: {$createdVisits}, Updated: {$updatedVisits})");

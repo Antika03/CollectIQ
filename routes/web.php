@@ -16,6 +16,8 @@ use App\Http\Controllers\C3mrCaringController;
 use App\Http\Controllers\C3mrPerformanceController;
 use App\Http\Controllers\C3mrSyncController;
 use App\Http\Controllers\GlobalSearchController;
+use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ReminderController;
 
 /*
 |--------------------------------------------------------------------------
@@ -73,6 +75,33 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/search', [GlobalSearchController::class, 'search'])
         ->name('global.search');
+
+    /*
+    |--------------------------------------------------------------------------
+    | User Profile & Password
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/profile', [ProfileController::class, 'index'])
+        ->name('profile.index');
+
+    Route::patch('/profile/password', [ProfileController::class, 'updatePassword'])
+        ->name('profile.password');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Reminder Center (Collection Intelligence)
+    |--------------------------------------------------------------------------
+    */
+
+    Route::get('/reminders/export/csv', [ReminderController::class, 'export'])
+        ->name('reminders.export.csv');
+
+    Route::get('/reminders', [ReminderController::class, 'index'])
+        ->name('reminders.index');
+
+    Route::post('/reminders/preview', [ReminderController::class, 'preview'])
+        ->name('reminders.preview');
 
     /*
     |--------------------------------------------------------------------------

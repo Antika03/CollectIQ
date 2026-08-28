@@ -552,9 +552,17 @@
 
                     {{-- Nomor Internet --}}
                     <td>
-                        <code style="font-size:12.5px; background:var(--secondary); padding:2px 7px; border-radius:5px; color:var(--ink-700);">
-                            {{ $visit->customer->nomor_internet ?? '-' }}
-                        </code>
+                        <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $visit->customer->nomor_internet ?? '' }}" data-masked="true">
+                            <code class="masked-snd-text" style="font-size:12.5px; background:var(--secondary); padding:2px 7px; border-radius:5px; color:var(--ink-700);">••••••••••</code>
+                            @if(!empty($visit->customer?->nomor_internet))
+                                <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                                <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $visit->customer->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                                    <i class="bi bi-copy"></i>
+                                </button>
+                            @endif
+                        </div>
                     </td>
 
                     {{-- AR Agent --}}
@@ -710,7 +718,12 @@
                     <div class="avatar-circle" id="detailAvatar" style="width:42px; height:42px; font-size:15px; flex-shrink:0;"></div>
                     <div style="flex:1; min-width:0;">
                         <div style="font-size:15px; font-weight:700; color:var(--ink-900);" id="detailNama"></div>
-                        <div style="font-size:12px; color:var(--ink-400); margin-top:2px;" id="detailNomor"></div>
+                        <div class="d-flex align-items-center gap-1 mt-1 masked-snd-wrapper" id="detailNomorWrap" data-snd="" data-masked="true">
+                            <code class="masked-snd-text" id="detailNomor" style="background:rgba(0,0,0,0.06); padding:1px 6px; border-radius:4px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                            <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
                     </div>
                     <a id="detailCust360Btn" href="#" class="vm-btn-action primary" style="white-space:nowrap; display:none;">
                         <i class="bi bi-person-vcard"></i> Customer 360
@@ -992,7 +1005,19 @@ function populateDetailModal(data) {
     document.getElementById('detailModalSub').textContent   = v.tanggal_input ?? '';
     document.getElementById('detailAvatar').textContent     = nama.substring(0, 2).toUpperCase();
     document.getElementById('detailNama').textContent       = nama;
-    document.getElementById('detailNomor').textContent      = c ? c.nomor_internet : '';
+    
+    const nomorWrap = document.getElementById('detailNomorWrap');
+    const nomorEl   = document.getElementById('detailNomor');
+    if (nomorWrap && nomorEl) {
+        const rawNum = c ? (c.nomor_internet || '') : '';
+        nomorWrap.setAttribute('data-snd', rawNum);
+        nomorWrap.setAttribute('data-masked', 'true');
+        nomorEl.textContent = '••••••••••';
+        const eyeIcon = nomorWrap.querySelector('.toggle-mask-btn i');
+        if (eyeIcon) {
+            eyeIcon.className = 'bi bi-eye';
+        }
+    }
 
     // Customer 360 button
     const btn360 = document.getElementById('detailCust360Btn');

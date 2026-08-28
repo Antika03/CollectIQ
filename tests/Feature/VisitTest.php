@@ -117,4 +117,65 @@ class VisitTest extends TestCase
         $response->assertSee('Hotel Grand Priangan');
         $response->assertSee('Pelanggan berjanji bayar akhir bulan');
     }
+
+    public function test_visits_sorted_by_tanggal_input_desc(): void
+    {
+        $admin = User::create([
+            'name'     => 'Test Admin',
+            'email'    => 'admin_visit_sort@telkom.co.id',
+            'password' => Hash::make('password123'),
+            'role'     => 'admin',
+        ]);
+
+        $customer1 = Customer::create(['nomor_internet' => '131427105551', 'nama_pelanggan' => 'Pelanggan 18 Agustus']);
+        $customer2 = Customer::create(['nomor_internet' => '131427105552', 'nama_pelanggan' => 'Pelanggan 23 Agustus']);
+
+        $vOld = Visit::create([
+            'collect_id'    => 'COL-OLD',
+            'customer_id'   => $customer1->id,
+            'tanggal_input' => '2026-08-18',
+            'hasil_visit'   => 'Contacted',
+        ]);
+
+        $vNew = Visit::create([
+            'collect_id'    => 'COL-NEW',
+            'customer_id'   => $customer2->id,
+            'tanggal_input' => '2026-08-23',
+            'hasil_visit'   => 'Contacted',
+        ]);
+
+        $response = $this->actingAs($admin)->get('/visits');
+        $response->assertStatus(200);
+
+        // Pelanggan 23 Agustus (terbaru) harus muncul sebelum Pelanggan 18 Agustus
+        $response->assertSeeInOrder(['Pelanggan 23 Agustus', 'Pelanggan 18 Agustus']);
+    }
+
+    public function test_visits_page_has_privacy_masking(): void
+    {
+        $admin = User::create([
+            'name'     => 'Test Admin',
+            'email'    => 'admin_visit_mask@telkom.co.id',
+            'password' => Hash::make('password123'),
+            'role'     => 'admin',
+        ]);
+
+        $customer = Customer::create([
+            'nomor_internet' => '131429114242',
+            'nama_pelanggan' => 'Warung Indra Dikar',
+        ]);
+
+        Visit::create([
+            'collect_id'    => 'COLLECT-2548',
+            'customer_id'   => $customer->id,
+            'tanggal_input' => '2026-08-18',
+            'hasil_visit'   => 'Contacted',
+        ]);
+
+        $response = $this->actingAs($admin)->get('/visits');
+        $response->assertStatus(200);
+        $response->assertSee('masked-snd-wrapper');
+        $response->assertSee('••••••••••');
+        $response->assertSee('data-snd="131429114242"', false);
+    }
 }

@@ -9,6 +9,7 @@ use App\Models\ViseeproData;
 use App\Models\CaringLog;
 use App\Models\WitelPerformance;
 use App\Models\ArAgent;
+use App\Helpers\CacheHelper;
 use App\Imports\ReportPrqImport;
 use App\Imports\ViseeproImport;
 use Maatwebsite\Excel\Facades\Excel;
@@ -325,9 +326,9 @@ class C3mrSyncService
                 'success' => true,
                 'label'   => 'Report PRQ',
                 'count'   => $import->processedCount,
-                'created' => $import->createdVisits,
-                'updated' => $import->updatedVisits,
-                'message' => "{$import->processedCount} data kunjungan C3MR disinkronkan",
+                'created' => 0,
+                'updated' => $import->processedCount,
+                'message' => "{$import->processedCount} data pelanggan & AR diproses (kunjungan bersumber dari PRITI DATA)",
                 'error'   => null,
             ];
         } catch (\Throwable $e) {
@@ -643,6 +644,9 @@ class C3mrSyncService
                 'last_sync_result' => $savePayload,
             ]);
         }
+
+        // Bersihkan cache dashboard & visit agar data terbaru langsung tampil di UI
+        CacheHelper::clearDashboardCaches();
 
         $duration = round(microtime(true) - $startTime, 2);
 

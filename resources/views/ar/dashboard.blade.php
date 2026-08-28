@@ -189,8 +189,12 @@
                                         <div style="font-weight: 700; color: var(--ink-900);">
                                             {{ $cust->nama_pelanggan }}
                                         </div>
-                                        <div style="font-size: 11.5px; color: var(--ink-400);">
-                                            <code>{{ $cust->nomor_internet }}</code> • {{ $cust->datel ?: '-' }}
+                                        <div class="d-flex align-items-center gap-1 mt-1 masked-snd-wrapper" data-snd="{{ $cust->nomor_internet }}" data-masked="true" style="font-size: 11.5px; color: var(--ink-400);">
+                                            <code class="masked-snd-text" style="background:var(--secondary); padding:1px 5px; border-radius:4px;">••••••••••</code>
+                                            <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                                <i class="bi bi-eye"></i>
+                                            </button>
+                                            <span>• {{ $cust->datel ?: '-' }}</span>
                                         </div>
                                     </td>
                                     <td>

@@ -526,6 +526,9 @@ body{
             <a href="{{ route('ptp.monitoring') }}" class="{{ request()->routeIs('ptp.monitoring') ? 'active' : '' }}">
                 <i class="bi bi-cash-coin"></i> PTP Monitoring
             </a>
+            <a href="{{ route('reminders.index') }}" class="{{ request()->routeIs('reminders*') ? 'active' : '' }}">
+                <i class="bi bi-bell-fill"></i> Reminder Center
+            </a>
             <a href="{{ route('risk-score.index') }}" class="{{ request()->routeIs('risk-score*') ? 'active' : '' }}">
                 <i class="bi bi-shield-exclamation"></i> Indikasi Risiko Churn
             </a>
@@ -628,6 +631,11 @@ body{
                         <li class="px-3 py-2 border-bottom">
                             <div style="font-weight: 700; color: var(--ink-900);">{{ auth()->user()->name }}</div>
                             <div style="font-size: 11px; color: var(--ink-500);">{{ auth()->user()->email }}</div>
+                        </li>
+                        <li>
+                            <a class="dropdown-item py-2" href="{{ route('profile.index') }}">
+                                <i class="bi bi-person-circle me-2 text-muted"></i> Profil
+                            </a>
                         </li>
                         @if(auth()->user()->isAdmin())
                             <li>
@@ -746,6 +754,33 @@ function copyToClipboard(text, btnElement) {
         setTimeout(function() {
             btnElement.innerHTML = originalHtml;
         }, 1500);
+    }
+}
+
+function toggleInternetMask(btn) {
+    const wrapper = btn.closest('.masked-snd-wrapper');
+    if (!wrapper) return;
+    const textEl = wrapper.querySelector('.masked-snd-text');
+    const icon = btn.querySelector('i');
+    const raw = wrapper.getAttribute('data-snd') || '';
+    const isMasked = wrapper.getAttribute('data-masked') === 'true';
+
+    if (isMasked) {
+        textEl.textContent = raw;
+        wrapper.setAttribute('data-masked', 'false');
+        if (icon) {
+            icon.classList.remove('bi-eye');
+            icon.classList.add('bi-eye-slash');
+        }
+        btn.setAttribute('title', 'Sembunyikan Nomor Internet');
+    } else {
+        textEl.textContent = '••••••••••';
+        wrapper.setAttribute('data-masked', 'true');
+        if (icon) {
+            icon.classList.remove('bi-eye-slash');
+            icon.classList.add('bi-eye');
+        }
+        btn.setAttribute('title', 'Tampilkan Nomor Internet');
     }
 }
 

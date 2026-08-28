@@ -64,6 +64,14 @@
                             </div>
                         </div>
                     </td>
+                    <td>
+                        <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $c->nomor_internet }}" data-masked="true">
+                            <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">••••••••••</code>
+                            <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </td>
                     <td style="font-size:12px; color:var(--ink-700); white-space:nowrap;">
                         @if($c->wa_url)
                             <a href="{{ $c->wa_url }}" target="_blank" class="text-success text-decoration-none fw-semibold" title="Kirim WhatsApp Otomatis" data-bs-toggle="tooltip">
@@ -114,10 +122,10 @@
 <div class="card p-0 mb-4" style="overflow:hidden;">
     <div style="padding:14px 20px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
         <div style="font-weight:700; font-size:14px; color:var(--ink-900);">
-            <i class="bi bi-geo-alt-fill" style="color:#3B82F6; margin-right:6px;"></i>
-            Kunjungan Visit Lapangan
+            <i class="bi bi-geo-alt-fill" style="color:var(--primary); margin-right:6px;"></i>
+            Kunjungan Lapangan (Visits)
         </div>
-        <span class="badge-status" style="background:#EFF6FF; color:#1D4ED8;">{{ $visits->count() }} hasil</span>
+        <span class="badge-status badge-ptp">{{ $visits->count() }} hasil</span>
     </div>
     <div class="table-responsive">
         <table class="table-modern mb-0">
@@ -136,7 +144,16 @@
                 <tr>
                     <td style="font-size:12px; white-space:nowrap;">{{ $v->tanggal_input ? $v->tanggal_input->format('d/m/Y') : '-' }}</td>
                     <td style="font-weight:600; color:var(--ink-900);">{{ optional($v->customer)->nama_pelanggan ?: '-' }}</td>
-                    <td><code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">{{ optional($v->customer)->nomor_internet ?: '-' }}</code></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ optional($v->customer)->nomor_internet ?: '' }}" data-masked="true">
+                            <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">••••••••••</code>
+                            @if(optional($v->customer)->nomor_internet)
+                                <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                    <i class="bi bi-eye"></i>
+                                </button>
+                            @endif
+                        </div>
+                    </td>
                     <td>
                         <span class="badge-status {{ $v->is_ptp ? 'badge-ptp' : 'badge-not-contacted' }}" style="font-size:11px;">
                             {{ $v->hasil_visit }}
@@ -183,7 +200,14 @@
                 <tr>
                     <td style="font-size:12px; white-space:nowrap;">{{ $log->tanggal_caring ? $log->tanggal_caring->format('d/m/Y') : '-' }}</td>
                     <td style="font-weight:600; color:var(--ink-900);">{{ $log->nama_pelanggan }}</td>
-                    <td><code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">{{ $log->nomor_internet }}</code></td>
+                    <td>
+                        <div class="d-flex align-items-center gap-1 masked-snd-wrapper" data-snd="{{ $log->nomor_internet }}" data-masked="true">
+                            <code class="masked-snd-text" style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">••••••••••</code>
+                            <button type="button" class="btn btn-link p-0 text-muted toggle-mask-btn" onclick="toggleInternetMask(this)" title="Tampilkan Nomor Internet">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                        </div>
+                    </td>
                     <td>
                         @if($log->status_caring === 'CONTACTED')
                             <span class="badge-status badge-contacted"><i class="bi bi-check-circle"></i> Contacted</span>

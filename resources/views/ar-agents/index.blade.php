@@ -105,7 +105,7 @@
                 @forelse($agents as $idx => $agent)
                     <tr>
                         <td style="text-align:center;">
-                            @php $rank = $agents->firstItem() + $idx; @endphp
+                            @php $rank = ($agents->firstItem() ?? 1) + (int)$idx; @endphp
                             <span class="rank-pill rank-{{ $rank <= 3 ? $rank : 'other' }}" style="margin:0 auto;">
                                 {{ $rank }}
                             </span>
