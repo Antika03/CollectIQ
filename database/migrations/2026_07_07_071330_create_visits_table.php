@@ -15,13 +15,13 @@ return new class extends Migration
             $table->id();
             $table->string('collect_id', 100)->unique();
             $table->foreignId('customer_id')->constrained()->cascadeOnDelete();
-            $table->foreignId('ar_agent_id')->constrained()->restrictOnDelete();
+            $table->foreignId('ar_agent_id')->nullable()->constrained()->nullOnDelete();
             $table->date('tanggal_input');
             $table->string('hasil_visit');
             $table->string('kategori_visit')->nullable();
             $table->text('keterangan_visit')->nullable();
             $table->text('foto_url')->nullable();
-            $table->string('no_hp_snapshot', 20)->nullable();
+            $table->string('no_hp_snapshot', 255)->nullable();
             $table->string('tipe_hunian_snapshot', 100)->nullable();
             $table->boolean('is_ptp')->default(false);
             $table->timestamps();
