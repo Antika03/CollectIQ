@@ -145,12 +145,12 @@ body {
     <form action="{{ route('login.post') }}" method="POST">
         @csrf
         <div class="mb-3">
-            <label class="form-label" for="emailInput">Email Pengguna</label>
+            <label class="form-label" for="loginInput">Username atau Email</label>
             <div class="input-group">
                 <span class="input-group-text bg-white border-end-0" style="border-radius: 10px 0 0 10px; border-color: var(--border); color: #94A3B8;">
-                    <i class="bi bi-envelope"></i>
+                    <i class="bi bi-person"></i>
                 </span>
-                <input id="emailInput" type="email" name="email" value="{{ old('email') }}" class="form-control border-start-0" placeholder="nama@telkom.co.id" required autofocus>
+                <input id="loginInput" type="text" name="login" value="{{ old('login') }}" class="form-control border-start-0" placeholder="Username (NIK) atau email..." required autofocus>
             </div>
         </div>
 

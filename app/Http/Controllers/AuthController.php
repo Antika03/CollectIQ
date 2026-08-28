@@ -23,18 +23,34 @@ class AuthController extends Controller
 
     public function login(Request $request)
     {
-        $credentials = $request->validate([
-            'email'    => 'required|email',
+        $loginInput = $request->input('login') ?? $request->input('email') ?? $request->input('username');
+
+        $request->validate([
             'password' => 'required|string',
         ], [
-            'email.required'    => 'Email wajib diisi.',
-            'email.email'       => 'Format email tidak valid.',
             'password.required' => 'Password wajib diisi.',
         ]);
 
-        $remember = $request->boolean('remember');
+        if (empty($loginInput)) {
+            throw ValidationException::withMessages([
+                'login' => 'Username atau email wajib diisi.',
+            ]);
+        }
 
-        if (Auth::attempt($credentials, $remember)) {
+        $remember = $request->boolean('remember');
+        $isEmail = (bool) filter_var($loginInput, FILTER_VALIDATE_EMAIL);
+
+        $authenticated = false;
+
+        if ($isEmail) {
+            $authenticated = Auth::attempt(['email' => $loginInput, 'password' => $request->password], $remember);
+        } else {
+            // Coba via username terlebih dahulu, jika gagal coba via email
+            $authenticated = Auth::attempt(['username' => $loginInput, 'password' => $request->password], $remember)
+                || Auth::attempt(['email' => $loginInput, 'password' => $request->password], $remember);
+        }
+
+        if ($authenticated) {
             $request->session()->regenerate();
 
             $user = Auth::user();
@@ -46,7 +62,7 @@ class AuthController extends Controller
         }
 
         throw ValidationException::withMessages([
-            'email' => 'Kombinasi email dan password yang Anda masukkan tidak sesuai.',
+            'login' => 'Kombinasi username/email dan password yang Anda masukkan tidak sesuai.',
         ]);
     }
 

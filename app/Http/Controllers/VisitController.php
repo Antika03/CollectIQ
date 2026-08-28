@@ -25,112 +25,137 @@ class VisitController extends Controller
         */
         $arAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
-        $hasilVisitOptions = Visit::whereNotNull('hasil_visit')->where('hasil_visit', '!=', '')->distinct()->orderBy('hasil_visit')->pluck('hasil_visit');
-        $kategoriOptions   = Visit::whereNotNull('kategori_visit')->where('kategori_visit', '!=', '')->distinct()->orderBy('kategori_visit')->pluck('kategori_visit');
-
         /*
         |--------------------------------------------------------------------------
-        | 2. KPI Metrics (Cached 60 detik) — Sumber: PRITI DATA Collection
+        | 1. Metadata Bundle (KPI, Trend Chart, Distribusi, Filter Options) — Cached 5 Menit
         |--------------------------------------------------------------------------
         */
-        $kpis = \Illuminate\Support\Facades\Cache::remember('visit_kpi_summary', 60, function () {
-            $baseVisit = Visit::where('collect_id', 'not like', 'PRQ-%');
+        $pageMetaJson = \Illuminate\Support\Facades\Cache::remember('visit_page_meta_json_v3', 300, function () {
+            $today = today()->toDateString();
+            $rangeStart = Carbon::today()->subDays(13)->toDateString();
 
-            $totalVisit       = (clone $baseVisit)->count();
-            $visitHariIni     = (clone $baseVisit)->whereDate('tanggal_input', today())->count();
-            $totalPtp         = (clone $baseVisit)->where('is_ptp', true)->count();
-            $ptpHariIni       = (clone $baseVisit)->whereDate('tanggal_input', today())->where('is_ptp', true)->count();
-            $contactedCount   = (clone $baseVisit)->whereNotNull('hasil_visit')
-                                    ->where('hasil_visit', '!=', '')
-                                    ->where('hasil_visit', '!=', 'Belum Diisi')
-                                    ->where('hasil_visit', '!=', '-')
-                                    ->count();
-            $notContactedCount = (clone $baseVisit)->where(function ($q) {
-                $q->whereNull('hasil_visit')
-                  ->orWhere('hasil_visit', '')
-                  ->orWhere('hasil_visit', 'Belum Diisi')
-                  ->orWhere('hasil_visit', '-');
-            })->count();
+            // A. KPI Single-Pass Aggregate
+            $stats = \Illuminate\Support\Facades\DB::table('visits')
+                ->where('collect_id', 'not like', 'PRQ-%')
+                ->selectRaw("
+                    COUNT(*) as total_visit,
+                    SUM(CASE WHEN DATE(tanggal_input) = ? THEN 1 ELSE 0 END) as visit_hari_ini,
+                    SUM(CASE WHEN is_ptp = 1 THEN 1 ELSE 0 END) as total_ptp,
+                    SUM(CASE WHEN DATE(tanggal_input) = ? AND is_ptp = 1 THEN 1 ELSE 0 END) as ptp_hari_ini,
+                    SUM(CASE WHEN hasil_visit IS NOT NULL AND hasil_visit != '' AND hasil_visit != 'Belum Diisi' AND hasil_visit != '-' THEN 1 ELSE 0 END) as contacted_count,
+                    SUM(CASE WHEN hasil_visit IS NULL OR hasil_visit = '' OR hasil_visit = 'Belum Diisi' OR hasil_visit = '-' THEN 1 ELSE 0 END) as not_contacted_count
+                ", [$today, $today])
+                ->first();
 
-            return compact('totalVisit', 'visitHariIni', 'totalPtp', 'ptpHariIni', 'contactedCount', 'notContactedCount');
-        });
-
-        $totalVisit        = $kpis['totalVisit'];
-        $visitHariIni      = $kpis['visitHariIni'];
-        $totalPtp          = $kpis['totalPtp'];
-        $ptpHariIni        = $kpis['ptpHariIni'];
-        $contactedCount    = $kpis['contactedCount'];
-        $notContactedCount = $kpis['notContactedCount'];
-
-        /*
-        |--------------------------------------------------------------------------
-        | 3. Chart: Trend visit harian 14 hari terakhir (Cached 60 detik)
-        |--------------------------------------------------------------------------
-        */
-        $chartData = \Illuminate\Support\Facades\Cache::remember('visit_chart_trend', 60, function () {
-            $rangeStart = Carbon::today()->subDays(13);
-
-            $dailyRaw = Visit::where('collect_id', 'not like', 'PRQ-%')
+            // B. 14-Day Trend Single Query
+            $trendRaw = \Illuminate\Support\Facades\DB::table('visits')
+                ->where('collect_id', 'not like', 'PRQ-%')
                 ->whereDate('tanggal_input', '>=', $rangeStart)
-                ->selectRaw('tanggal_input, COUNT(*) as total')
-                ->groupBy('tanggal_input')
-                ->pluck('total', 'tanggal_input')
-                ->toArray();
-
-            $dailyPtpRaw = Visit::where('collect_id', 'not like', 'PRQ-%')
-                ->whereDate('tanggal_input', '>=', $rangeStart)
-                ->where('is_ptp', true)
-                ->selectRaw('tanggal_input, COUNT(*) as total')
-                ->groupBy('tanggal_input')
-                ->pluck('total', 'tanggal_input')
-                ->toArray();
+                ->selectRaw("
+                    DATE(tanggal_input) as tgl,
+                    COUNT(*) as total,
+                    SUM(CASE WHEN is_ptp = 1 THEN 1 ELSE 0 END) as ptp_total
+                ")
+                ->groupBy(\Illuminate\Support\Facades\DB::raw("DATE(tanggal_input)"))
+                ->get()
+                ->keyBy('tgl');
 
             $chartLabels  = [];
             $chartVisits  = [];
             $chartPtp     = [];
-
+            $startCarbon  = Carbon::today()->subDays(13);
             for ($i = 0; $i < 14; $i++) {
-                $date           = $rangeStart->copy()->addDays($i);
-                $key            = $date->format('Y-m-d');
-                $chartLabels[]  = $date->format('d/m');
-                $chartVisits[]  = $dailyRaw[$key] ?? 0;
-                $chartPtp[]     = $dailyPtpRaw[$key] ?? 0;
+                $date          = $startCarbon->copy()->addDays($i);
+                $key           = $date->format('Y-m-d');
+                $chartLabels[] = $date->format('d/m');
+                $chartVisits[] = (int)($trendRaw[$key]->total ?? 0);
+                $chartPtp[]    = (int)($trendRaw[$key]->ptp_total ?? 0);
             }
 
-            return compact('chartLabels', 'chartVisits', 'chartPtp');
+            // C. Distribusi Hasil & Top Agents (Plain array serialization)
+            $hasilDistribution = \Illuminate\Support\Facades\DB::table('visits')
+                ->where('collect_id', 'not like', 'PRQ-%')
+                ->whereNotNull('hasil_visit')
+                ->where('hasil_visit', '!=', '')
+                ->selectRaw('hasil_visit, COUNT(*) as total')
+                ->groupBy('hasil_visit')
+                ->orderByDesc('total')
+                ->take(8)
+                ->get()
+                ->toArray();
+
+            $agentStats = \Illuminate\Support\Facades\DB::table('ar_agents')
+                ->where('is_active', true)
+                ->select('ar_agents.id', 'ar_agents.name')
+                ->selectRaw("(SELECT COUNT(*) FROM visits WHERE visits.ar_agent_id = ar_agents.id AND visits.collect_id NOT LIKE 'PRQ-%') as visits_count")
+                ->orderByDesc('visits_count')
+                ->take(8)
+                ->get()
+                ->toArray();
+
+            // D. Dropdown Filter Options
+            $hasilVisitOptions = \Illuminate\Support\Facades\DB::table('visits')
+                ->whereNotNull('hasil_visit')
+                ->where('hasil_visit', '!=', '')
+                ->distinct()
+                ->orderBy('hasil_visit')
+                ->pluck('hasil_visit')
+                ->toArray();
+
+            $kategoriOptions = \Illuminate\Support\Facades\DB::table('visits')
+                ->whereNotNull('kategori_visit')
+                ->where('kategori_visit', '!=', '')
+                ->distinct()
+                ->orderBy('kategori_visit')
+                ->pluck('kategori_visit')
+                ->toArray();
+
+            return json_encode([
+                'totalVisit'        => (int)($stats->total_visit ?? 0),
+                'visitHariIni'      => (int)($stats->visit_hari_ini ?? 0),
+                'totalPtp'          => (int)($stats->total_ptp ?? 0),
+                'ptpHariIni'        => (int)($stats->ptp_hari_ini ?? 0),
+                'contactedCount'    => (int)($stats->contacted_count ?? 0),
+                'notContactedCount' => (int)($stats->not_contacted_count ?? 0),
+                'chartLabels'       => $chartLabels,
+                'chartVisits'       => $chartVisits,
+                'chartPtp'          => $chartPtp,
+                'hasilDistribution' => $hasilDistribution,
+                'agentStats'        => $agentStats,
+                'hasilVisitOptions' => $hasilVisitOptions,
+                'kategoriOptions'   => $kategoriOptions,
+            ]);
         });
 
-        $chartLabels = $chartData['chartLabels'];
-        $chartVisits = $chartData['chartVisits'];
-        $chartPtp    = $chartData['chartPtp'];
+        $pageMeta = json_decode($pageMetaJson, false);
+
+        $totalVisit        = $pageMeta->totalVisit ?? 0;
+        $visitHariIni      = $pageMeta->visitHariIni ?? 0;
+        $totalPtp          = $pageMeta->totalPtp ?? 0;
+        $ptpHariIni        = $pageMeta->ptpHariIni ?? 0;
+        $contactedCount    = $pageMeta->contactedCount ?? 0;
+        $notContactedCount = $pageMeta->notContactedCount ?? 0;
+        $chartLabels       = $pageMeta->chartLabels ?? [];
+        $chartVisits       = $pageMeta->chartVisits ?? [];
+        $chartPtp          = $pageMeta->chartPtp ?? [];
+        $hasilDistribution = collect($pageMeta->hasilDistribution ?? []);
+        $agentStats        = collect($pageMeta->agentStats ?? []);
+        $hasilVisitOptions = $pageMeta->hasilVisitOptions ?? [];
+        $kategoriOptions   = $pageMeta->kategoriOptions ?? [];
 
         /*
         |--------------------------------------------------------------------------
-        | 4. Chart: Distribusi & AR stats (Query langsung — Single Source of Truth)
+        | 2. Query Utama Visit dengan Filter (Single Source of Truth: PRITI Collection)
         |--------------------------------------------------------------------------
         */
-        $hasilDistribution = Visit::where('collect_id', 'not like', 'PRQ-%')
-            ->whereNotNull('hasil_visit')
-            ->where('hasil_visit', '!=', '')
-            ->selectRaw('hasil_visit, COUNT(*) as total')
-            ->groupBy('hasil_visit')
-            ->orderByDesc('total')
-            ->take(8)
-            ->get();
-
-        $agentStats = ArAgent::withCount(['visits' => function ($vq) {
-            $vq->where('collect_id', 'not like', 'PRQ-%');
-        }])
-            ->orderByDesc('visits_count')
-            ->take(8)
-            ->get();
-
-        /*
-        |--------------------------------------------------------------------------
-        | 5. Query utama Visit dengan filter (Single Source of Truth: PRITI Collection)
-        |--------------------------------------------------------------------------
-        */
-        $query = Visit::with(['customer', 'arAgent'])
+        $query = Visit::with([
+            'customer' => function ($cq) {
+                $cq->select('id', 'nomor_internet', 'nama_pelanggan', 'no_hp_terbaru', 'datel', 'sto', 'bill_category', 'saldo_piutang', 'risk_level');
+            },
+            'arAgent' => function ($aq) {
+                $aq->select('id', 'name', 'chat_id_telegram', 'is_active');
+            }
+        ])
             ->where('collect_id', 'not like', 'PRQ-%')
             ->latest('tanggal_input')
             ->latest('id');

@@ -119,11 +119,6 @@
                                     <div style="font-weight:700; color:var(--ink-900);">
                                         {{ $agent->name }}
                                     </div>
-                                    @if($agent->chat_id_telegram)
-                                        <div style="font-size:11px; color:#227093;">
-                                            <i class="bi bi-telegram"></i> Telegram connected
-                                        </div>
-                                    @endif
                                 </div>
                             </div>
                         </td>

@@ -270,7 +270,7 @@
                         <div class="p-3" style="background:var(--secondary); border-radius:10px;">
                             <div style="font-size:11px; font-weight:700; color:var(--ink-400); text-transform:uppercase;">Penerima Reminder (AR)</div>
                             <div id="modalArName" style="font-size:14px; font-weight:800; color:var(--ink-900); margin-top:2px;">-</div>
-                            <div id="modalArStatus" style="font-size:11px; margin-top:2px;" class="text-muted">Chat ID Direct Telegram: Belum Tersedia</div>
+                            <div style="font-size:11px; margin-top:2px; color:var(--ink-500);">Account Representative • Telkom Witel Priangan Timur</div>
                         </div>
                     </div>
                     <div class="col-md-6">
@@ -348,15 +348,6 @@ function openPreviewModal(customerId) {
         document.getElementById('modalCustName').textContent = data.customer.nama_pelanggan || '-';
         document.getElementById('modalCustSaldo').textContent = data.customer.saldo_formatted || 'Rp 0';
         document.getElementById('modalReminderText').value = data.message || '';
-
-        const statusEl = document.getElementById('modalArStatus');
-        if (data.customer.ar_has_chat_id) {
-            statusEl.className = 'text-success';
-            statusEl.innerHTML = '<i class="bi bi-check-circle-fill"></i> Direct Telegram Terhubung (' + data.customer.chat_id + ')';
-        } else {
-            statusEl.className = 'text-muted';
-            statusEl.innerHTML = '<i class="bi bi-info-circle"></i> Direct Telegram Belum Aktif (Gunakan Copy manual)';
-        }
 
         const modal = new bootstrap.Modal(document.getElementById('previewModal'));
         modal.show();

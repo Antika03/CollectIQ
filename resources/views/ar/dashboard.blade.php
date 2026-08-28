@@ -17,11 +17,6 @@
                     <span style="font-size: 18px; font-weight: 800; color: var(--ink-900);">
                         {{ $agent ? $agent->name : 'Pilih AR Agent' }}
                     </span>
-                    @if($agent && $agent->chat_id_telegram)
-                        <span class="badge" style="background: #E0F2FE; color: #0369A1; font-size: 11px;">
-                            <i class="bi bi-telegram"></i> Telegram Terhubung
-                        </span>
-                    @endif
                 </div>
                 <div style="font-size: 12.5px; color: var(--ink-500); margin-top: 2px;">
                     Account Representative • Telkom Witel Priangan Timur

@@ -365,40 +365,191 @@ class DataNormalizerService
     }
 
     /**
+     * Daftar prefix seluler operator telekomunikasi Indonesia (WhatsApp-capable)
+     */
+    private static array $cellularPrefixes = [
+        // Telkomsel (Halo, SimPATI, Loop, AS, by.U)
+        '0811' => 'Telkomsel', '0812' => 'Telkomsel', '0813' => 'Telkomsel',
+        '0821' => 'Telkomsel', '0822' => 'Telkomsel', '0823' => 'Telkomsel',
+        '0851' => 'Telkomsel', '0852' => 'Telkomsel', '0853' => 'Telkomsel',
+
+        // Indosat Ooredoo Hutchison (IM3, Mentari, Matrix, 3/Tri)
+        '0814' => 'Indosat', '0815' => 'Indosat', '0816' => 'Indosat',
+        '0855' => 'Indosat', '0856' => 'Indosat', '0857' => 'Indosat', '0858' => 'Indosat',
+        '0895' => '3 (Tri)', '0896' => '3 (Tri)', '0897' => '3 (Tri)',
+        '0898' => '3 (Tri)', '0899' => '3 (Tri)',
+
+        // XL Axiata (XL, Axis)
+        '0817' => 'XL Axiata', '0818' => 'XL Axiata', '0819' => 'XL Axiata',
+        '0859' => 'XL Axiata', '0877' => 'XL Axiata', '0878' => 'XL Axiata',
+        '0831' => 'Axis', '0832' => 'Axis', '0833' => 'Axis', '0838' => 'Axis',
+
+        // Smartfren
+        '0881' => 'Smartfren', '0882' => 'Smartfren', '0883' => 'Smartfren',
+        '0884' => 'Smartfren', '0885' => 'Smartfren', '0886' => 'Smartfren',
+        '0887' => 'Smartfren', '0888' => 'Smartfren', '0889' => 'Smartfren',
+    ];
+
+    /**
+     * Kode area telepon rumah / PSTN fixed line Jawa Barat & sekitarnya (bukan seluler)
+     */
+    private static array $pstnAreaCodes = [
+        '021', '022', '0231', '0232', '0233', '0234', '0260', '0261', '0262',
+        '0263', '0264', '0265', '0266', '0267', '0281', '0282', '0283', '0284',
+        '0285', '0286', '0287', '0289', '024', '0271', '0274', '031'
+    ];
+
+    /**
+     * Evaluasi satu nomor telepon terhadap kriteria validitas seluler Indonesia & kandidat WhatsApp
+     */
+    public static function evaluateIndonesianMobilePhone(?string $phone): array
+    {
+        if (empty($phone)) {
+            return ['valid' => false, 'phone' => null, 'score' => 0, 'reason' => 'Kosong', 'provider' => null];
+        }
+
+        $cleaned = preg_replace('/[^\d]/', '', (string)$phone);
+
+        // Normalisasi format internasional ke format nasional 08...
+        if (str_starts_with($cleaned, '62') && strlen($cleaned) >= 10) {
+            $cleaned = '0' . substr($cleaned, 2);
+        } elseif (str_starts_with($cleaned, '8') && strlen($cleaned) >= 9) {
+            $cleaned = '0' . $cleaned;
+        }
+
+        $len = strlen($cleaned);
+
+        // Cek panjang umum nomor seluler Indonesia (10-13 digit)
+        if ($len < 10 || $len > 13) {
+            return ['valid' => false, 'phone' => $cleaned, 'score' => 0, 'reason' => 'Panjang nomor tidak sesuai seluler (10-13 digit)', 'provider' => null];
+        }
+
+        // Cek apakah nomor fixed line / PSTN
+        foreach (self::$pstnAreaCodes as $pstn) {
+            if (str_starts_with($cleaned, $pstn)) {
+                return ['valid' => false, 'phone' => $cleaned, 'score' => 0, 'reason' => 'Nomor Fixed Line / Telepon Rumah (PSTN)', 'provider' => 'PSTN'];
+            }
+        }
+
+        // Cek pola dummy / berulang / sekuensial fiktif
+        if (preg_match('/^(\d)\1{7,}$/', $cleaned) ||
+            $cleaned === '08123456789' ||
+            $cleaned === '081234567890' ||
+            $cleaned === '081200000000' ||
+            $cleaned === '080000000000' ||
+            $cleaned === '089999999999') {
+            return ['valid' => false, 'phone' => $cleaned, 'score' => 0, 'reason' => 'Nomor fiktif / placeholder berulang', 'provider' => null];
+        }
+
+        // Harus diawali dengan '08'
+        if (!str_starts_with($cleaned, '08')) {
+            return ['valid' => false, 'phone' => $cleaned, 'score' => 0, 'reason' => 'Bukan awalan seluler 08', 'provider' => null];
+        }
+
+        $prefix4 = substr($cleaned, 0, 4);
+        $provider = self::$cellularPrefixes[$prefix4] ?? null;
+
+        $score = 0;
+        if ($provider !== null) {
+            $score += 60; // Prefix operator resmi Indonesia yang dikenal
+        } else {
+            $score += 20; // Awalan 08 tetapi belum terdaftar dalam map
+        }
+
+        // Skor panjang ideal nomor seluler WhatsApp (11 atau 12 digit)
+        if ($len === 11 || $len === 12) {
+            $score += 30;
+        } elseif ($len === 10 || $len === 13) {
+            $score += 15;
+        }
+
+        return [
+            'valid'    => true,
+            'phone'    => $cleaned,
+            'score'    => $score,
+            'reason'   => 'Kandidat Nomor Seluler Valid',
+            'provider' => $provider,
+        ];
+    }
+
+    /**
+     * Memilih satu kandidat nomor HP terbaik dari berbagai sumber data (multi-number selection)
+     * Tidak pernah membuat nomor palsu atau mengembalikan nomor yang tidak valid.
+     */
+    public static function selectBestCandidatePhone(...$sources): ?string
+    {
+        $evaluated = self::getDistinctCandidatePhones(...$sources);
+
+        if (empty($evaluated)) {
+            return null;
+        }
+
+        return $evaluated[0]['phone'] ?? null;
+    }
+
+    /**
+     * Mendapatkan daftar nomor kontak kandidat yang valid dan diurutkan dari skor tertinggi
+     */
+    public static function getDistinctCandidatePhones(...$sources): array
+    {
+        $rawCandidates = [];
+
+        foreach ($sources as $source) {
+            if (empty($source)) {
+                continue;
+            }
+
+            if (is_array($source)) {
+                foreach ($source as $item) {
+                    if (is_string($item) || is_numeric($item)) {
+                        $parts = preg_split('/[;,\|\/\n\r]+/', (string)$item);
+                        foreach ($parts as $p) {
+                            $t = trim($p);
+                            if (!empty($t) && $t !== '-' && $t !== '0') {
+                                $rawCandidates[] = $t;
+                            }
+                        }
+                    }
+                }
+            } elseif (is_string($source) || is_numeric($source)) {
+                $parts = preg_split('/[;,\|\/\n\r]+/', (string)$source);
+                foreach ($parts as $p) {
+                    $t = trim($p);
+                    if (!empty($t) && $t !== '-' && $t !== '0') {
+                        $rawCandidates[] = $t;
+                    }
+                }
+            }
+        }
+
+        $seen = [];
+        $validList = [];
+
+        foreach ($rawCandidates as $raw) {
+            $eval = self::evaluateIndonesianMobilePhone($raw);
+            if ($eval['valid'] && !empty($eval['phone'])) {
+                $phone = $eval['phone'];
+                if (!isset($seen[$phone])) {
+                    $seen[$phone] = true;
+                    $validList[] = $eval;
+                }
+            }
+        }
+
+        // Urutkan kandidat berdasarkan skor tertinggi
+        usort($validList, function ($a, $b) {
+            return $b['score'] <=> $a['score'];
+        });
+
+        return $validList;
+    }
+
+    /**
      * Normalisasi nomor telepon Indonesia (multi-separator support, 08xxx / 628xxx format)
      */
     public static function normalizePhone(?string $phone): ?string
     {
-        if (!$phone) {
-            return null;
-        }
-
-        $parts = preg_split('/[;,\|\/\n\r]+/', trim($phone));
-
-        foreach ($parts as $part) {
-            $part = trim($part);
-            if (empty($part) || $part === '-' || $part === '0') {
-                continue;
-            }
-
-            $cleaned = preg_replace('/[^\d]/', '', $part);
-
-            if (str_starts_with($cleaned, '62') && strlen($cleaned) >= 10) {
-                $cleaned = '0' . substr($cleaned, 2);
-            } elseif (str_starts_with($cleaned, '8') && strlen($cleaned) >= 9) {
-                $cleaned = '0' . $cleaned;
-            }
-
-            if (strlen($cleaned) >= 10 && strlen($cleaned) <= 14 && str_starts_with($cleaned, '08')) {
-                return $cleaned;
-            }
-
-            if (strlen($cleaned) >= 9 && strlen($cleaned) <= 12 && str_starts_with($cleaned, '0')) {
-                return $cleaned;
-            }
-        }
-
-        return null;
+        return self::selectBestCandidatePhone($phone);
     }
 
     /**

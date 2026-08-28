@@ -23,8 +23,8 @@ class ReminderController extends Controller
         // 1. Ambil list AR Agents untuk dropdown filter
         $arAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
-        // 2. Base Query Customer dengan eager loading
-        $query = Customer::with(['assignedArAgent', 'visits' => function ($vq) {
+        // 2. Base Query Customer dengan eager loading (termasuk visits.arAgent untuk mencegah N+1)
+        $query = Customer::with(['assignedArAgent', 'visits.arAgent' => function ($vq) {
             $vq->latest('tanggal_input')->latest('id');
         }]);
 
@@ -126,22 +126,35 @@ class ReminderController extends Controller
             $this->formatReminderRow($c);
         });
 
-        // 3. Ringkasan KPI Kategori Reminder
-        $baseKpiQuery = Customer::query();
-        if ($user && $user->isAr() && $user->ar_agent_id) {
-            $arId = $user->ar_agent_id;
-            $baseKpiQuery->where(function ($q) use ($arId) {
-                $q->where('assigned_ar_agent_id', $arId)
-                  ->orWhereHas('visits', function ($vq) use ($arId) {
-                      $vq->where('ar_agent_id', $arId);
-                  });
-            });
-        }
+        // 3. Ringkasan KPI Kategori Reminder (Cached 5 menit)
+        $reminderKpiKey = ($user && $user->isAr() && $user->ar_agent_id)
+            ? 'reminder_kpis_ar_' . $user->ar_agent_id
+            : 'reminder_kpis_admin';
 
-        $totalUnvisited = (clone $baseKpiQuery)->whereNull('last_visit_at')->where('saldo_piutang', '>', 0)->count();
-        $totalRevisit   = (clone $baseKpiQuery)->whereNotNull('last_visit_at')->where('last_visit_at', '<=', now()->subDays(14))->where('saldo_piutang', '>', 0)->count();
-        $totalPtp       = (clone $baseKpiQuery)->whereHas('visits', fn($vq) => $vq->where('is_ptp', true))->count();
-        $totalHighRisk  = (clone $baseKpiQuery)->whereIn('risk_level', ['high', 'critical'])->count();
+        $kpis = \Illuminate\Support\Facades\Cache::remember($reminderKpiKey, 300, function () use ($user) {
+            $baseKpiQuery = Customer::query();
+            if ($user && $user->isAr() && $user->ar_agent_id) {
+                $arId = $user->ar_agent_id;
+                $baseKpiQuery->where(function ($q) use ($arId) {
+                    $q->where('assigned_ar_agent_id', $arId)
+                      ->orWhereHas('visits', function ($vq) use ($arId) {
+                          $vq->where('ar_agent_id', $arId);
+                      });
+                });
+            }
+
+            return [
+                'totalUnvisited' => (clone $baseKpiQuery)->whereNull('last_visit_at')->where('saldo_piutang', '>', 0)->count(),
+                'totalRevisit'   => (clone $baseKpiQuery)->whereNotNull('last_visit_at')->where('last_visit_at', '<=', now()->subDays(14))->where('saldo_piutang', '>', 0)->count(),
+                'totalPtp'       => (clone $baseKpiQuery)->whereHas('visits', fn($vq) => $vq->where('is_ptp', true))->count(),
+                'totalHighRisk'  => (clone $baseKpiQuery)->whereIn('risk_level', ['high', 'critical'])->count(),
+            ];
+        });
+
+        $totalUnvisited = $kpis['totalUnvisited'];
+        $totalRevisit   = $kpis['totalRevisit'];
+        $totalPtp       = $kpis['totalPtp'];
+        $totalHighRisk  = $kpis['totalHighRisk'];
 
         return view('reminders.index', compact(
             'reminders',
@@ -308,8 +321,8 @@ class ReminderController extends Controller
     private function formatReminderRow(Customer $customer): array
     {
         $latestVisit = $customer->visits->first();
-        $arName = $customer->assignedArAgent?->name 
-            ?? $latestVisit?->arAgent?->name 
+        $arName = $customer->assignedArAgent?->name
+            ?? $latestVisit?->arAgent?->name
             ?? 'Belum Ditugaskan';
 
         $saldo = (float)($customer->saldo_piutang ?? 0);

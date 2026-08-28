@@ -423,7 +423,7 @@
                         <select name="ar_agent_id" class="form-select form-select-sm" required style="border-radius:8px;">
                             @foreach($allAgents as $ag)
                                 <option value="{{ $ag->id }}" {{ $customer->assigned_ar_agent_id === $ag->id ? 'selected' : '' }}>
-                                    {{ $ag->name }} {{ $ag->chat_id_telegram ? ' (Telegram Aktif)' : ' [Belum ada Chat ID]' }}
+                                    {{ $ag->name }}
                                 </option>
                             @endforeach
                         </select>

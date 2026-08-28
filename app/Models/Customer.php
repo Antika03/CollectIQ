@@ -75,16 +75,93 @@ class Customer extends Model
     }
 
     /**
+     * Memilih nomor kontak kandidat terbaik (WhatsApp-ready) dari semua sumber data yang tersedia
+     */
+    public function getBestContactPhoneAttribute(): ?string
+    {
+        $sources = [
+            $this->no_hp_terbaru,
+        ];
+
+        // Jika relasi visits sudah dimuat
+        if ($this->relationLoaded('visits')) {
+            $latestVisitHp = $this->visits->sortByDesc('tanggal_input')->first()?->no_hp_snapshot;
+            if ($latestVisitHp) {
+                $sources[] = $latestVisitHp;
+            }
+        }
+
+        // Jika relasi caringLogs sudah dimuat
+        if ($this->relationLoaded('caringLogs')) {
+            $latestCaringHp = $this->caringLogs->sortByDesc('tanggal_caring')->first()?->no_hp;
+            if ($latestCaringHp) {
+                $sources[] = $latestCaringHp;
+            }
+        }
+
+        // Jika relasi viseeproData sudah dimuat
+        if ($this->relationLoaded('viseeproData')) {
+            $vpCp = $this->viseeproData->first()?->pic_cp;
+            if ($vpCp) {
+                $sources[] = $vpCp;
+            }
+        }
+
+        return \App\Services\DataNormalizerService::selectBestCandidatePhone(...$sources);
+    }
+
+    /**
+     * Mengambil daftar nomor kontak alternatif yang valid selain nomor utama
+     */
+    public function getAlternatePhonesAttribute(): array
+    {
+        $sources = [
+            $this->no_hp_terbaru,
+        ];
+
+        if ($this->relationLoaded('visits')) {
+            foreach ($this->visits as $v) {
+                if ($v->no_hp_snapshot) $sources[] = $v->no_hp_snapshot;
+            }
+        }
+
+        if ($this->relationLoaded('caringLogs')) {
+            foreach ($this->caringLogs as $c) {
+                if ($c->no_hp) $sources[] = $c->no_hp;
+            }
+        }
+
+        if ($this->relationLoaded('viseeproData')) {
+            foreach ($this->viseeproData as $vp) {
+                if ($vp->pic_cp) $sources[] = $vp->pic_cp;
+            }
+        }
+
+        $allValid = \App\Services\DataNormalizerService::getDistinctCandidatePhones(...$sources);
+        $best = $this->best_contact_phone;
+
+        $alternates = [];
+        foreach ($allValid as $item) {
+            if ($item['phone'] !== $best) {
+                $alternates[] = $item['phone'];
+            }
+        }
+
+        return $alternates;
+    }
+
+    /**
      * Format nomor HP agar kompatibel dengan tautan WhatsApp (wa.me/62...)
      */
     public function getFormattedWaNumberAttribute(): ?string
     {
-        if (empty($this->no_hp_terbaru)) {
+        $bestPhone = $this->best_contact_phone ?: $this->no_hp_terbaru;
+        if (empty($bestPhone)) {
             return null;
         }
 
         // Hapus karakter selain angka
-        $clean = preg_replace('/[^0-9]/', '', (string)$this->no_hp_terbaru);
+        $clean = preg_replace('/[^0-9]/', '', (string)$bestPhone);
         if (empty($clean)) {
             return null;
         }
@@ -122,7 +199,7 @@ class Customer extends Model
     }
 
     /**
-     * URL tautan langsung ke WhatsApp dengan nomor dan teks pesan otomatis
+     * URL tautan langsung ke WhatsApp dengan nomor kandidat dan teks pesan resmi
      */
     public function getWaUrlAttribute(): ?string
     {

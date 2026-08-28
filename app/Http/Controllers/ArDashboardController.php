@@ -53,24 +53,71 @@ class ArDashboardController extends Controller
             ]);
         }
 
-        // Query data untuk AR ini
+        // Query aggregate KPIs untuk AR ini (Cached 3 menit)
+        $arKpis = \Illuminate\Support\Facades\Cache::remember('ar_dash_kpis_' . $agent->id, 180, function () use ($agent) {
+            $fourteenDaysAgo = now()->subDays(14)->toDateTimeString();
+
+            $custRow = \Illuminate\Support\Facades\DB::table('customers')
+                ->where(function ($q) use ($agent) {
+                    $q->where('assigned_ar_agent_id', $agent->id)
+                      ->orWhereExists(function ($sq) use ($agent) {
+                          $sq->select(\Illuminate\Support\Facades\DB::raw(1))
+                             ->from('visits')
+                             ->whereColumn('visits.customer_id', 'customers.id')
+                             ->where('visits.ar_agent_id', $agent->id);
+                      });
+                })
+                ->selectRaw("
+                    COUNT(*) as total_customers,
+                    COALESCE(SUM(saldo_piutang), 0) as total_outstanding,
+                    SUM(CASE WHEN last_visit_at IS NULL AND saldo_piutang > 0 THEN 1 ELSE 0 END) as unvisited_count,
+                    SUM(CASE WHEN last_visit_at IS NOT NULL AND last_visit_at <= ? AND saldo_piutang > 0 THEN 1 ELSE 0 END) as revisit_count,
+                    SUM(CASE WHEN LOWER(risk_level) IN ('high', 'critical') THEN 1 ELSE 0 END) as high_risk_count,
+                    SUM(CASE WHEN is_pranpc = 1 THEN 1 ELSE 0 END) as pranpc_count
+                ", [$fourteenDaysAgo])
+                ->first();
+
+            $visitRow = \Illuminate\Support\Facades\DB::table('visits')
+                ->where('ar_agent_id', $agent->id)
+                ->selectRaw("
+                    COUNT(*) as total_visits,
+                    SUM(CASE WHEN is_ptp = 1 THEN 1 ELSE 0 END) as active_ptp
+                ")
+                ->first();
+
+            $totalPaid = \App\Models\CaringLog::where('ar_agent_id', $agent->id)
+                ->where('status_bayar', 'PAID')
+                ->count();
+
+            return [
+                'totalCustomers'   => (int)($custRow->total_customers ?? 0),
+                'totalOutstanding' => (float)($custRow->total_outstanding ?? 0),
+                'unvisitedCount'   => (int)($custRow->unvisited_count ?? 0),
+                'revisitCount'     => (int)($custRow->revisit_count ?? 0),
+                'highRiskCount'    => (int)($custRow->high_risk_count ?? 0),
+                'pranpcCount'      => (int)($custRow->pranpc_count ?? 0),
+                'totalVisits'      => (int)($visitRow->total_visits ?? 0),
+                'activePtpCount'   => (int)($visitRow->active_ptp ?? 0),
+                'totalPaid'        => (int)$totalPaid,
+            ];
+        });
+
+        $totalCustomers   = $arKpis['totalCustomers'];
+        $totalOutstanding = $arKpis['totalOutstanding'];
+        $unvisitedCount   = $arKpis['unvisitedCount'];
+        $revisitCount     = $arKpis['revisitCount'];
+        $highRiskCount    = $arKpis['highRiskCount'];
+        $pranpcCount      = $arKpis['pranpcCount'];
+        $totalVisits      = $arKpis['totalVisits'];
+        $activePtpCount   = $arKpis['activePtpCount'];
+        $totalPaid        = $arKpis['totalPaid'];
+
         $customersQuery = Customer::where(function ($q) use ($agent) {
             $q->where('assigned_ar_agent_id', $agent->id)
               ->orWhereHas('visits', function ($vq) use ($agent) {
                   $vq->where('ar_agent_id', $agent->id);
               });
         });
-
-        $totalCustomers   = (clone $customersQuery)->count();
-        $totalOutstanding = (clone $customersQuery)->sum('saldo_piutang');
-        $unvisitedCount   = (clone $customersQuery)->whereNull('last_visit_at')->where('saldo_piutang', '>', 0)->count();
-        $revisitCount     = (clone $customersQuery)->whereNotNull('last_visit_at')->where('last_visit_at', '<=', now()->subDays(14))->where('saldo_piutang', '>', 0)->count();
-        $highRiskCount    = (clone $customersQuery)->whereIn('risk_level', ['high', 'critical'])->count();
-        $pranpcCount      = (clone $customersQuery)->where('is_pranpc', true)->count();
-
-        $totalVisits      = Visit::where('ar_agent_id', $agent->id)->count();
-        $activePtpCount   = Visit::where('ar_agent_id', $agent->id)->where('is_ptp', true)->count();
-        $totalPaid        = CaringLog::where('ar_agent_id', $agent->id)->where('status_bayar', 'PAID')->count();
 
         $assignedCustomers = (clone $customersQuery)
             ->withCount('visits')

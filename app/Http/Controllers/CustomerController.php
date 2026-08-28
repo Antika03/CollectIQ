@@ -88,28 +88,50 @@ class CustomerController extends Controller
             ? 'cust_kpis_ar_' . $user->ar_agent_id 
             : 'cust_kpis_admin';
 
-        $kpiData = \Illuminate\Support\Facades\Cache::remember($cacheKey, 60, function () use ($user) {
-            $baseCountQuery = Customer::query();
+        $kpiData = \Illuminate\Support\Facades\Cache::remember($cacheKey, 300, function () use ($user) {
+            $fourteenDaysAgo = now()->subDays(14)->toDateTimeString();
+
             if ($user && $user->isAr() && $user->ar_agent_id) {
                 $arId = $user->ar_agent_id;
-                $baseCountQuery->where(function ($q) use ($arId) {
-                    $q->where('assigned_ar_agent_id', $arId)
-                      ->orWhereHas('visits', function ($vq) use ($arId) {
-                          $vq->where('ar_agent_id', $arId);
-                      });
-                });
+                $row = \Illuminate\Support\Facades\DB::table('customers')
+                    ->where(function ($q) use ($arId) {
+                        $q->where('assigned_ar_agent_id', $arId)
+                          ->orWhereExists(function ($sq) use ($arId) {
+                              $sq->select(\Illuminate\Support\Facades\DB::raw(1))
+                                 ->from('visits')
+                                 ->whereColumn('visits.customer_id', 'customers.id')
+                                 ->where('visits.ar_agent_id', $arId);
+                          });
+                    })
+                    ->selectRaw("
+                        COUNT(*) as total_customers,
+                        SUM(CASE WHEN LOWER(risk_level) IN ('high', 'critical') THEN 1 ELSE 0 END) as high_risk_count,
+                        SUM(CASE WHEN pending_ptp_count > 0 THEN 1 ELSE 0 END) as active_ptp_count,
+                        SUM(CASE WHEN is_pranpc = 1 THEN 1 ELSE 0 END) as pranpc_count,
+                        COALESCE(SUM(saldo_piutang), 0) as total_piutang,
+                        SUM(CASE WHEN last_visit_at IS NULL OR last_visit_at <= ? THEN 1 ELSE 0 END) as stale_count
+                    ", [$fourteenDaysAgo])
+                    ->first();
+            } else {
+                $row = \Illuminate\Support\Facades\DB::table('customers')
+                    ->selectRaw("
+                        COUNT(*) as total_customers,
+                        SUM(CASE WHEN LOWER(risk_level) IN ('high', 'critical') THEN 1 ELSE 0 END) as high_risk_count,
+                        SUM(CASE WHEN pending_ptp_count > 0 THEN 1 ELSE 0 END) as active_ptp_count,
+                        SUM(CASE WHEN is_pranpc = 1 THEN 1 ELSE 0 END) as pranpc_count,
+                        COALESCE(SUM(saldo_piutang), 0) as total_piutang,
+                        SUM(CASE WHEN last_visit_at IS NULL OR last_visit_at <= ? THEN 1 ELSE 0 END) as stale_count
+                    ", [$fourteenDaysAgo])
+                    ->first();
             }
 
             return [
-                'totalCustomers' => (clone $baseCountQuery)->count(),
-                'highRiskCount'  => (clone $baseCountQuery)->whereIn('risk_level', ['high', 'critical'])->count(),
-                'activePtpCount' => (clone $baseCountQuery)->where('pending_ptp_count', '>', 0)->count(),
-                'pranpcCount'    => (clone $baseCountQuery)->where('is_pranpc', true)->count(),
-                'totalPiutang'   => (clone $baseCountQuery)->sum('saldo_piutang'),
-                'staleCount'     => (clone $baseCountQuery)->where(function ($q) {
-                    $q->whereNull('last_visit_at')
-                      ->orWhere('last_visit_at', '<=', now()->subDays(14));
-                })->count(),
+                'totalCustomers' => (int)($row->total_customers ?? 0),
+                'highRiskCount'  => (int)($row->high_risk_count ?? 0),
+                'activePtpCount' => (int)($row->active_ptp_count ?? 0),
+                'pranpcCount'    => (int)($row->pranpc_count ?? 0),
+                'totalPiutang'   => (float)($row->total_piutang ?? 0),
+                'staleCount'     => (int)($row->stale_count ?? 0),
             ];
         });
 
