@@ -25,6 +25,10 @@
 /storage/framework/sessions/*
 /storage/framework/views/*
 /storage/pail
+
+/storage/app/public/visit_cache/*
+!/storage/app/public/visit_cache/.gitkeep
+
 /vendor
 _ide_helper.php
 Homestead.json
