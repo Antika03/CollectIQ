@@ -83,38 +83,6 @@ class DashboardController extends Controller
                 $chartPtp[]    = $dailyPtpRaw[$key] ?? 0;
             }
 
-            // 4. Top Master AR Agents
-            $topAgents = ArAgent::where('is_active', true)
-                ->withCount('visits')
-                ->orderByDesc('visits_count')
-                ->take(5)
-                ->get();
-
-            $topAgentsTotalVisits = max($topAgents->sum('visits_count'), 1);
-            $topAgents->each(function ($agent) use ($topAgentsTotalVisits) {
-                $agent->contribution_percent = round(($agent->visits_count / $topAgentsTotalVisits) * 100);
-            });
-
-            // 5. Top Outstanding Customers
-            $topOutstanding = Customer::where('saldo_piutang', '>', 0)
-                ->orderByDesc('saldo_piutang')
-                ->take(5)
-                ->get();
-
-            // 6. Recent Visits with Photo Preview
-            $latestVisits = Visit::with(['customer', 'arAgent'])
-                ->latest('tanggal_input')
-                ->latest('id')
-                ->take(5)
-                ->get();
-
-            // 7. Recent Caring Logs
-            $latestCaring = CaringLog::with('customer')
-                ->latest('tanggal_caring')
-                ->latest('id')
-                ->take(5)
-                ->get();
-
             return compact(
                 'totalCustomers',
                 'totalVisits',
@@ -137,14 +105,47 @@ class DashboardController extends Controller
                 'lowCount',
                 'chartLabels',
                 'chartVisits',
-                'chartPtp',
-                'topAgents',
-                'topOutstanding',
-                'latestVisits',
-                'latestCaring'
+                'chartPtp'
             );
         });
 
-        return view('dashboard', $dashboardData);
+        // 4. Top Master AR Agents (Query langsung agar model selalu fully hydrated)
+        $topAgents = ArAgent::where('is_active', true)
+            ->withCount('visits')
+            ->orderByDesc('visits_count')
+            ->take(5)
+            ->get();
+
+        $topAgentsTotalVisits = max($topAgents->sum('visits_count'), 1);
+        $topAgents->each(function ($agent) use ($topAgentsTotalVisits) {
+            $agent->contribution_percent = round(($agent->visits_count / $topAgentsTotalVisits) * 100);
+        });
+
+        // 5. Top Outstanding Customers
+        $topOutstanding = Customer::where('saldo_piutang', '>', 0)
+            ->orderByDesc('saldo_piutang')
+            ->take(5)
+            ->get();
+
+        // 6. Recent Visits with Photo Preview
+        $latestVisits = Visit::with(['customer', 'arAgent'])
+            ->latest('tanggal_input')
+            ->latest('id')
+            ->take(5)
+            ->get();
+
+        // 7. Recent Caring Logs
+        $latestCaring = CaringLog::with('customer')
+            ->latest('tanggal_caring')
+            ->latest('id')
+            ->take(5)
+            ->get();
+
+        return view('dashboard', array_merge($dashboardData, compact(
+            'topAgents',
+            'topOutstanding',
+            'latestVisits',
+            'latestCaring'
+        )));
     }
 }

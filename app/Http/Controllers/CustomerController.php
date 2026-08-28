@@ -120,9 +120,7 @@ class CustomerController extends Controller
         $totalPiutang   = $kpiData['totalPiutang'];
         $staleCount     = $kpiData['staleCount'];
 
-        $allAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
-            return ArAgent::where('is_active', true)->orderBy('name')->get();
-        });
+        $allAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
         return view('customers.index', [
             'customers'      => $customers,
@@ -160,9 +158,7 @@ class CustomerController extends Controller
         ]);
 
         $churnEval = ChurnRiskService::evaluateCustomer($customer);
-        $allAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
-            return ArAgent::where('is_active', true)->orderBy('name')->get();
-        });
+        $allAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
         return view('customers.show', compact('customer', 'churnEval', 'allAgents'));
     }

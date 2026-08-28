@@ -63,4 +63,22 @@ class TelegramChatTest extends TestCase
 
         $response->assertSessionHas('success');
     }
+
+    public function test_automatic_telegram_reminders_command_is_disabled()
+    {
+        $this->artisan('collectiq:send-telegram-reminders')
+            ->expectsOutput('Automatic daily Telegram reminder telah dinonaktifkan sesuai requirement sistem.')
+            ->assertExitCode(0);
+    }
+
+    public function test_send_daily_reminders_service_is_deactivated()
+    {
+        $service = new TelegramService();
+        $result = $service->sendDailyReminders();
+
+        $this->assertTrue($result['success']);
+        $this->assertEquals(0, $result['sent']);
+        $this->assertEquals(0, $result['failed']);
+        $this->assertStringContainsString('dinonaktifkan', $result['message']);
+    }
 }

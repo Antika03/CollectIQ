@@ -23,19 +23,10 @@ class VisitController extends Controller
         | 1. Dropdown filter options (Cached 5 menit untuk akses super cepat)
         |--------------------------------------------------------------------------
         */
-        $arAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
-            return ArAgent::orderBy('name')->get();
-        });
+        $arAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
-        $filterOptions = \Illuminate\Support\Facades\Cache::remember('visit_filter_options', 300, function () {
-            return [
-                'hasil'    => Visit::whereNotNull('hasil_visit')->where('hasil_visit', '!=', '')->distinct()->orderBy('hasil_visit')->pluck('hasil_visit'),
-                'kategori' => Visit::whereNotNull('kategori_visit')->where('kategori_visit', '!=', '')->distinct()->orderBy('kategori_visit')->pluck('kategori_visit'),
-            ];
-        });
-
-        $hasilVisitOptions = $filterOptions['hasil'];
-        $kategoriOptions   = $filterOptions['kategori'];
+        $hasilVisitOptions = Visit::whereNotNull('hasil_visit')->where('hasil_visit', '!=', '')->distinct()->orderBy('hasil_visit')->pluck('hasil_visit');
+        $kategoriOptions   = Visit::whereNotNull('kategori_visit')->where('kategori_visit', '!=', '')->distinct()->orderBy('kategori_visit')->pluck('kategori_visit');
 
         /*
         |--------------------------------------------------------------------------
@@ -115,31 +106,24 @@ class VisitController extends Controller
 
         /*
         |--------------------------------------------------------------------------
-        | 4. Chart: Distribusi & AR stats (Cached 60 detik)
+        | 4. Chart: Distribusi & AR stats (Query langsung — Single Source of Truth)
         |--------------------------------------------------------------------------
         */
-        $extraStats = \Illuminate\Support\Facades\Cache::remember('visit_extra_stats', 60, function () {
-            $hasilDistribution = Visit::where('collect_id', 'not like', 'PRQ-%')
-                ->whereNotNull('hasil_visit')
-                ->where('hasil_visit', '!=', '')
-                ->selectRaw('hasil_visit, COUNT(*) as total')
-                ->groupBy('hasil_visit')
-                ->orderByDesc('total')
-                ->take(8)
-                ->get();
+        $hasilDistribution = Visit::where('collect_id', 'not like', 'PRQ-%')
+            ->whereNotNull('hasil_visit')
+            ->where('hasil_visit', '!=', '')
+            ->selectRaw('hasil_visit, COUNT(*) as total')
+            ->groupBy('hasil_visit')
+            ->orderByDesc('total')
+            ->take(8)
+            ->get();
 
-            $agentStats = ArAgent::withCount(['visits' => function ($vq) {
-                $vq->where('collect_id', 'not like', 'PRQ-%');
-            }])
-                ->orderByDesc('visits_count')
-                ->take(8)
-                ->get();
-
-            return compact('hasilDistribution', 'agentStats');
-        });
-
-        $hasilDistribution = $extraStats['hasilDistribution'];
-        $agentStats        = $extraStats['agentStats'];
+        $agentStats = ArAgent::withCount(['visits' => function ($vq) {
+            $vq->where('collect_id', 'not like', 'PRQ-%');
+        }])
+            ->orderByDesc('visits_count')
+            ->take(8)
+            ->get();
 
         /*
         |--------------------------------------------------------------------------

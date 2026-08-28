@@ -77,21 +77,21 @@
                 </div>
             </div>
 
-            {{-- PENGATURAN TELEGRAM REMINDER --}}
+            {{-- PENGATURAN TELEGRAM REMINDER (OPTIONAL) --}}
             <div class="mt-4 pt-3 border-top">
                 <div class="section-title mb-1">
-                    <i class="bi bi-telegram text-primary me-2"></i> Pengaturan Telegram Reminder AR
+                    <i class="bi bi-telegram text-primary me-2"></i> Integrasi Telegram Bot (Opsional)
                 </div>
                 <div class="section-sub mb-3">
-                    Jadwal pengiriman otomatis ringkasan tagihan, visit & PTP ke personil AR
+                    Pengiriman otomatis Telegram dinonaktifkan. Pengelolaan follow-up penagihan dilakukan mandiri melalui Reminder Center.
                 </div>
 
                 <div class="row g-3 align-items-center">
                     <div class="col-12 col-md-4">
                         <div class="form-check form-switch">
-                            <input class="form-check-input" type="checkbox" name="telegram_reminder_enabled" id="reminderSwitch" value="1" {{ old('telegram_reminder_enabled', $setting->telegram_reminder_enabled ?? true) ? 'checked' : '' }}>
+                            <input class="form-check-input" type="checkbox" name="telegram_reminder_enabled" id="reminderSwitch" value="1" {{ old('telegram_reminder_enabled', $setting->telegram_reminder_enabled ?? false) ? 'checked' : '' }}>
                             <label class="form-check-label" for="reminderSwitch" style="font-size: 13px; font-weight: 600;">
-                                Aktifkan Reminder Otomatis
+                                Aktifkan Integrasi Bot (Opsional)
                             </label>
                         </div>
                     </div>

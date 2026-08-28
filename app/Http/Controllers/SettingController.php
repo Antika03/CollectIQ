@@ -99,12 +99,6 @@ class SettingController extends Controller
 
     public function sendRemindersNow(Request $request)
     {
-        $service = new TelegramService();
-        $res = $service->sendDailyReminders();
-
-        if ($res['success']) {
-            return back()->with('success', $res['message']);
-        }
-        return back()->with('error', $res['message']);
+        return back()->with('success', 'Pengingat pelanggan dapat dikelola secara fleksibel melalui menu Reminder Center tanpa pengiriman otomatis Telegram.');
     }
 }

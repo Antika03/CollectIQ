@@ -12,19 +12,8 @@ class SendTelegramReminders extends Command
 
     public function handle(TelegramService $telegramService): int
     {
-        $force = $this->option('force');
-        $dryRun = $this->option('dry-run');
-
-        $this->info("Memulai proses Telegram Reminder untuk AR (Force: " . ($force ? 'YES' : 'NO') . ", Dry-run: " . ($dryRun ? 'YES' : 'NO') . ")...");
-
-        $result = $telegramService->sendDailyReminders($force);
-
-        if ($result['success']) {
-            $this->info($result['message']);
-            return Command::SUCCESS;
-        } else {
-            $this->warn($result['message']);
-            return Command::FAILURE;
-        }
+        $this->info("Automatic daily Telegram reminder telah dinonaktifkan sesuai requirement sistem.");
+        $this->line("Reminder pelanggan dapat dikelola secara mandiri melalui menu Reminder Center.");
+        return Command::SUCCESS;
     }
 }

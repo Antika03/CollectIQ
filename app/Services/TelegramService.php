@@ -203,85 +203,18 @@ class TelegramService
     }
 
     /**
-     * Kirim reminder otomatis ke seluruh AR Agent yang memiliki Chat ID Telegram
-     * Merekam ke tabel telegram_reminders dan mencegah duplikasi harian.
+     * Automatic daily Telegram reminder telah dinonaktifkan.
+     * Mengembalikan status aman tanpa melakukan pengiriman HTTP ke Telegram.
      */
     public function sendDailyReminders(): array
     {
-        $setting = Setting::first();
-        if ($setting && $setting->telegram_reminder_enabled === false) {
-            return [
-                'success' => false,
-                'message' => 'Telegram Reminder sedang dinonaktifkan di Pengaturan.',
-                'sent'    => 0,
-                'failed'  => 0,
-                'skipped' => 0,
-            ];
-        }
-
-        $agents = ArAgent::where('is_active', true)
-            ->whereNotNull('chat_id_telegram')
-            ->where('chat_id_telegram', '!=', '')
-            ->get();
-
-        $sentCount = 0;
-        $failedCount = 0;
-        $skippedCount = 0;
-        $today = Carbon::today();
-
-        foreach ($agents as $agent) {
-            // Cek apakah sudah pernah dikirim hari ini untuk AR ini
-            $alreadySent = TelegramReminder::where('ar_agent_id', $agent->id)
-                ->where('type', 'daily_summary')
-                ->whereDate('scheduled_at', $today)
-                ->where('status', 'sent')
-                ->exists();
-
-            if ($alreadySent) {
-                $skippedCount++;
-                continue;
-            }
-
-            $message = self::buildArSummaryMessage($agent);
-            if (!$message) {
-                $skippedCount++;
-                continue;
-            }
-
-            // Catat ke telegram_reminders
-            $reminder = TelegramReminder::create([
-                'ar_agent_id'  => $agent->id,
-                'type'         => 'daily_summary',
-                'scheduled_at' => now(),
-                'status'       => 'pending',
-                'message'      => $message,
-            ]);
-
-            $res = $this->sendMessage($agent->chat_id_telegram, $message);
-
-            if ($res['success']) {
-                $reminder->update([
-                    'status'            => 'sent',
-                    'sent_at'           => now(),
-                    'telegram_response' => $res['response'],
-                ]);
-                $sentCount++;
-            } else {
-                $reminder->update([
-                    'status'            => 'failed',
-                    'telegram_response' => ['error' => $res['error']],
-                ]);
-                $failedCount++;
-            }
-        }
-
         return [
             'success'       => true,
-            'total_agents'  => $agents->count(),
-            'sent'          => $sentCount,
-            'failed'        => $failedCount,
-            'skipped'       => $skippedCount,
-            'message'       => "Pengiriman reminder harian selesai: {$sentCount} terkirim, {$failedCount} gagal, {$skippedCount} dilewati.",
+            'total_agents'  => 0,
+            'sent'          => 0,
+            'failed'        => 0,
+            'skipped'       => 0,
+            'message'       => 'Automatic Telegram reminder dinonaktifkan. Reminder pelanggan dapat dikelola melalui Reminder Center.',
         ];
     }
 

@@ -158,7 +158,14 @@
             <tbody>
                 @forelse($reminders as $idx => $c)
                     @php
-                        $r = $c->reminder_data;
+                        $r = is_array($c) ? ($c['reminder_data'] ?? []) : ($c->reminder_data ?? []);
+                        $arName = $r['ar_name'] ?? '-';
+                        $lastVisitFormatted = $r['last_visit_date_formatted'] ?? '-';
+                        $hasilVisit = $r['hasil_visit'] ?? '-';
+                        $kategoriVisit = $r['kategori_visit'] ?? '-';
+                        $priority = $r['priority'] ?? 'Rendah';
+                        $priorityClass = $r['priority_class'] ?? 'bg-secondary text-dark';
+                        $recommendation = $r['recommendation'] ?? '-';
                     @endphp
                     <tr id="row-{{ $c->id }}">
                         <td style="text-align:center;">
@@ -186,25 +193,25 @@
                             </div>
                         </td>
                         <td>
-                            <span style="font-weight:600; color:var(--ink-700);">{{ $r['ar_name'] }}</span>
+                            <span style="font-weight:600; color:var(--ink-700);">{{ $arName }}</span>
                         </td>
                         <td style="text-align:right; font-weight:800; color:var(--danger); white-space:nowrap;">
                             Rp {{ number_format($c->saldo_piutang, 0, ',', '.') }}
                         </td>
                         <td style="white-space:nowrap; font-size:12px;">
-                            {{ $r['last_visit_date_formatted'] }}
+                            {{ $lastVisitFormatted }}
                         </td>
                         <td>
-                            <div style="font-size:12px; font-weight:600; color:var(--ink-800);">{{ Str::limit($r['hasil_visit'], 22) }}</div>
-                            <div style="font-size:10.5px; color:var(--ink-400);">{{ Str::limit($r['kategori_visit'], 18) }}</div>
+                            <div style="font-size:12px; font-weight:600; color:var(--ink-800);">{{ Str::limit($hasilVisit, 22) }}</div>
+                            <div style="font-size:10.5px; color:var(--ink-400);">{{ Str::limit($kategoriVisit, 18) }}</div>
                         </td>
                         <td style="text-align:center;">
-                            <span class="badge {{ $r['priority_class'] }}" style="font-size:11px; border-radius:6px; padding:3px 8px;">
-                                {{ $r['priority'] }}
+                            <span class="badge {{ $priorityClass }}" style="font-size:11px; border-radius:6px; padding:3px 8px;">
+                                {{ $priority }}
                             </span>
                         </td>
                         <td style="font-size:11.5px; color:var(--ink-600); max-width:220px;">
-                            {{ $r['recommendation'] }}
+                            {{ $recommendation }}
                         </td>
                         <td style="text-align:center;">
                             <div class="d-flex align-items-center justify-content-center gap-1">

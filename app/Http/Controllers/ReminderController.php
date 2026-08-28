@@ -21,9 +21,7 @@ class ReminderController extends Controller
         $user = Auth::user();
 
         // 1. Ambil list AR Agents untuk dropdown filter
-        $arAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
-            return ArAgent::where('is_active', true)->orderBy('name')->get();
-        });
+        $arAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
 
         // 2. Base Query Customer dengan eager loading
         $query = Customer::with(['assignedArAgent', 'visits' => function ($vq) {
