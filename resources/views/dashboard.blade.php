@@ -192,10 +192,22 @@
                         @foreach($topOutstanding as $c)
                             <tr>
                                 <td>
-                                    <div style="font-weight:600; color:var(--ink-900);">{{ $c->nama_pelanggan }}</div>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <div style="font-weight:600; color:var(--ink-900);">{{ $c->nama_pelanggan }}</div>
+                                        <button type="button" class="btn btn-link p-0 text-muted" style="font-size:12px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ addslashes($c->nama_pelanggan) }}', this)" title="Salin Nama Pelanggan" data-bs-toggle="tooltip">
+                                            <i class="bi bi-copy"></i>
+                                        </button>
+                                    </div>
                                     <div style="font-size:11px; color:var(--ink-400);">{{ $c->datel ?: 'Wilayah Telkom' }}</div>
                                 </td>
-                                <td><code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">{{ $c->nomor_internet }}</code></td>
+                                <td>
+                                    <div class="d-flex align-items-center gap-1">
+                                        <code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px; color:var(--ink-700);">{{ $c->nomor_internet }}</code>
+                                        <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ $c->nomor_internet }}', this)" title="Salin No Internet" data-bs-toggle="tooltip">
+                                            <i class="bi bi-copy"></i>
+                                        </button>
+                                    </div>
+                                </td>
                                 <td style="text-align:right; font-weight:800; color:var(--danger); white-space:nowrap;">
                                     Rp {{ number_format($c->saldo_piutang, 0, ',', '.') }}
                                 </td>
@@ -238,9 +250,16 @@
                         @endif
                         <div class="flex-grow-1" style="min-width:0;">
                             <div class="d-flex justify-content-between align-items-center">
-                                <span style="font-weight:700; font-size:13px; color:var(--ink-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                                    {{ optional($v->customer)->nama_pelanggan ?? 'Pelanggan' }}
-                                </span>
+                                <div class="d-flex align-items-center gap-1" style="min-width:0;">
+                                    <span style="font-weight:700; font-size:13px; color:var(--ink-900); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                                        {{ optional($v->customer)->nama_pelanggan ?? 'Pelanggan' }}
+                                    </span>
+                                    @if(optional($v->customer)->nama_pelanggan)
+                                        <button type="button" class="btn btn-link p-0 text-muted" style="font-size:11px; line-height:1; opacity:0.6;" onclick="copyToClipboard('{{ addslashes($v->customer->nama_pelanggan) }}', this)" title="Salin Nama Pelanggan" data-bs-toggle="tooltip">
+                                            <i class="bi bi-copy"></i>
+                                        </button>
+                                    @endif
+                                </div>
                                 <span style="font-size:11px; color:var(--ink-400); white-space:nowrap; margin-left:8px;">
                                     {{ $v->tanggal_input?->format('d M') }}
                                 </span>

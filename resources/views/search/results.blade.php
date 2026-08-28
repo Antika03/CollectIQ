@@ -135,8 +135,8 @@
                 @foreach($visits as $v)
                 <tr>
                     <td style="font-size:12px; white-space:nowrap;">{{ $v->tanggal_input ? $v->tanggal_input->format('d/m/Y') : '-' }}</td>
-                    <td style="font-weight:600; color:var(--ink-900);">{{ $v->nama_pelanggan ?: optional($v->customer)->nama_pelanggan ?: '-' }}</td>
-                    <td><code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">{{ $v->nomor_internet }}</code></td>
+                    <td style="font-weight:600; color:var(--ink-900);">{{ optional($v->customer)->nama_pelanggan ?: '-' }}</td>
+                    <td><code style="background:var(--secondary); padding:2px 6px; border-radius:5px; font-size:12px;">{{ optional($v->customer)->nomor_internet ?: '-' }}</code></td>
                     <td>
                         <span class="badge-status {{ $v->is_ptp ? 'badge-ptp' : 'badge-not-contacted' }}" style="font-size:11px;">
                             {{ $v->hasil_visit }}
