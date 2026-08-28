@@ -284,4 +284,95 @@ class TelegramService
             'message'       => "Pengiriman reminder harian selesai: {$sentCount} terkirim, {$failedCount} gagal, {$skippedCount} dilewati.",
         ];
     }
+
+    /**
+     * Kirim pesan kustom / interaktif langsung ke AR Agent via Telegram
+     */
+    public function sendCustomMessage(int $arAgentId, string $message): array
+    {
+        $agent = ArAgent::find($arAgentId);
+        if (!$agent) {
+            return ['success' => false, 'message' => 'AR Agent tidak ditemukan.'];
+        }
+
+        if (empty($agent->chat_id_telegram)) {
+            return ['success' => false, 'message' => "AR Agent {$agent->name} belum memiliki Chat ID Telegram. Silakan lengkapi Chat ID terlebih dahulu."];
+        }
+
+        // Catat ke log reminders
+        $reminder = TelegramReminder::create([
+            'ar_agent_id'  => $agent->id,
+            'type'         => 'custom_chat',
+            'scheduled_at' => now(),
+            'status'       => 'pending',
+            'message'      => $message,
+        ]);
+
+        $res = $this->sendMessage($agent->chat_id_telegram, $message);
+
+        if ($res['success']) {
+            $reminder->update([
+                'status'            => 'sent',
+                'sent_at'           => now(),
+                'telegram_response' => $res['response'],
+            ]);
+            return [
+                'success' => true,
+                'message' => "Pesan berhasil terkirim ke Telegram AR {$agent->name}!",
+            ];
+        } else {
+            $reminder->update([
+                'status'            => 'failed',
+                'telegram_response' => ['error' => $res['error']],
+            ]);
+            return [
+                'success' => false,
+                'message' => "Gagal mengirim ke Telegram: " . ($res['error'] ?? 'Terjadi kesalahan.'),
+            ];
+        }
+    }
+
+    /**
+     * Kirim Kartu Profil / Tagihan Pelanggan langsung ke Telegram AR
+     */
+    public function sendCustomerBillingAlert(int $arAgentId, int $customerId, ?string $customNote = null): array
+    {
+        $agent = ArAgent::find($arAgentId);
+        if (!$agent) {
+            return ['success' => false, 'message' => 'AR Agent tidak ditemukan.'];
+        }
+
+        $customer = Customer::find($customerId);
+        if (!$customer) {
+            return ['success' => false, 'message' => 'Data pelanggan tidak ditemukan.'];
+        }
+
+        $saldo = number_format($customer->saldo_piutang, 0, ',', '.');
+        $pranpc = $customer->is_pranpc ? ' ⚠️ [PRANPC]' : '';
+        $risk = strtoupper($customer->risk_level ?? 'LOW');
+        $tglStr = now()->translatedFormat('l, d F Y, H:i');
+
+        $msg = "⚡ <b>PENUGASAN / DISPOSISI PELANGGAN</b>\n";
+        $msg .= "━━━━━━━━━━━━━━━━━━━━\n";
+        $msg .= "Halo Kak <b>" . strtoupper($agent->name) . "</b>,\n";
+        $msg .= "Berikut informasi pelanggan untuk segera ditindaklanjuti:\n\n";
+        $msg .= "👤 <b>Nama:</b> {$customer->nama_pelanggan}{$pranpc}\n";
+        $msg .= "🌐 <b>No. Internet (SND):</b> <code>{$customer->nomor_internet}</code>\n";
+        if ($customer->no_hp_terbaru) {
+            $msg .= "📱 <b>No. HP / WA:</b> +{$customer->formatted_wa_number}\n";
+        }
+        $msg .= "💰 <b>Saldo Piutang:</b> Rp {$saldo}\n";
+        $msg .= "🎯 <b>Risk Level:</b> {$risk} (Score: {$customer->risk_score})\n";
+        $msg .= "📍 <b>Alamat / Datel:</b> " . ($customer->alamat ?: ($customer->datel ?: '-')) . "\n";
+        $msg .= "🏢 <b>STO:</b> " . ($customer->sto ?: '-') . "\n";
+
+        if (!empty($customNote)) {
+            $msg .= "\n📝 <b>Catatan Admin/Koordinator:</b>\n<i>\"" . htmlspecialchars($customNote) . "\"</i>\n";
+        }
+
+        $msg .= "━━━━━━━━━━━━━━━━━━━━\n";
+        $msg .= "⏰ <i>Dikirim dari CollectIQ pada {$tglStr} WIB</i>";
+
+        return $this->sendCustomMessage($arAgentId, $msg);
+    }
 }

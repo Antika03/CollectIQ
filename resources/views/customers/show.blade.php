@@ -10,7 +10,12 @@
     <a href="{{ route('customers.index') }}" class="btn btn-outline-secondary btn-sm" style="border-radius:8px;">
         <i class="bi bi-arrow-left"></i> Kembali ke Daftar Customer
     </a>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+        @if(auth()->user() && auth()->user()->isAdmin())
+            <button type="button" class="btn btn-sm text-white" style="background:#0284C7; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:6px;" data-bs-toggle="modal" data-bs-target="#modalSendTelegram">
+                <i class="bi bi-telegram"></i> Kirim ke Telegram AR
+            </button>
+        @endif
         <a href="{{ url('/visits?search=' . $customer->nomor_internet) }}" class="btn btn-sm" style="background:var(--primary-soft); color:var(--primary-dark); font-weight:600; border-radius:8px;">
             <i class="bi bi-geo-alt"></i> Lihat Semua Visit
         </a>
@@ -373,6 +378,56 @@
                 @endforeach
             </div>
         @endif
+    </div>
+</div>
+
+{{-- MODAL DISPOSISI TELEGRAM KE AR --}}
+<div class="modal fade" id="modalSendTelegram" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content" style="border-radius:14px; border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
+            <div class="modal-header" style="background:#0F172A; color:#FFFFFF; border-radius:14px 14px 0 0; padding:16px 20px;">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="bi bi-telegram" style="color:#38BDF8; font-size:20px;"></i>
+                    <div>
+                        <h6 class="modal-title mb-0" style="font-weight:700; font-size:15px;">Disposisi Pelanggan ke Telegram AR</h6>
+                        <small style="color:#94A3B8; font-size:11.5px;">Kirim profil &amp; saldo piutang langsung ke bot Telegram AR</small>
+                    </div>
+                </div>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form action="{{ route('telegram.send-customer', $customer->id) }}" method="POST">
+                @csrf
+                <div class="modal-body" style="padding:20px;">
+                    <div class="p-3 mb-3" style="background:#F8FAFC; border:1px solid var(--border); border-radius:10px;">
+                        <div style="font-weight:700; color:var(--ink-900); font-size:13.5px;">{{ $customer->nama_pelanggan }}</div>
+                        <div style="font-size:12px; color:var(--ink-500);">SND: <code>{{ $customer->nomor_internet }}</code> | Saldo: <strong style="color:var(--primary);">Rp {{ number_format($customer->saldo_piutang, 0, ',', '.') }}</strong></div>
+                        <div style="font-size:11.5px; color:var(--ink-500); margin-top:2px;">Alamat: {{ $customer->alamat ?: ($customer->datel ?: '-') }}</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink-700);">Pilih AR Agent Tujuan</label>
+                        <select name="ar_agent_id" class="form-select form-select-sm" required style="border-radius:8px;">
+                            @foreach($allAgents as $ag)
+                                <option value="{{ $ag->id }}" {{ $customer->assigned_ar_agent_id === $ag->id ? 'selected' : '' }}>
+                                    {{ $ag->name }} {{ $ag->chat_id_telegram ? ' (Telegram Aktif)' : ' [Belum ada Chat ID]' }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink-700);">Catatan Tambahan untuk AR (Opsional)</label>
+                        <textarea name="custom_note" rows="3" class="form-control" placeholder="Contoh: Tolong segera kunjungi hari ini sebelum jam 15:00 WIB..." style="font-size:12.5px; border-radius:8px;"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer" style="background:#F8FAFC; border-top:1px solid var(--border); border-radius:0 0 14px 14px; padding:12px 20px;">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" style="border-radius:8px;">Batal</button>
+                    <button type="submit" class="btn btn-sm text-white" style="background:#0284C7; border:none; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
+                        <i class="bi bi-send-fill"></i> Kirim Notifikasi Telegram
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 </div>
 

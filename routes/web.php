@@ -212,5 +212,19 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/settings/send-reminders', [SettingController::class, 'sendRemindersNow'])
             ->name('settings.send-reminders');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Telegram Direct Chat & Messaging
+        |--------------------------------------------------------------------------
+        */
+        Route::post('/telegram/send', [\App\Http\Controllers\TelegramChatController::class, 'sendMessage'])
+            ->name('telegram.send');
+
+        Route::post('/telegram/send-customer/{customer}', [\App\Http\Controllers\TelegramChatController::class, 'sendCustomerCard'])
+            ->name('telegram.send-customer');
+
+        Route::post('/telegram/broadcast', [\App\Http\Controllers\TelegramChatController::class, 'sendBroadcast'])
+            ->name('telegram.broadcast');
     });
 });

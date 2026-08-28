@@ -111,18 +111,7 @@ class ReportPrqImport implements ToCollection
             }
 
             // Tanggal Input
-            $tanggalInput = now();
-            if (!empty($row[1])) {
-                try {
-                    $tanggalInput = Carbon::createFromFormat('d/m/Y H:i:s', trim((string)$row[1]));
-                } catch (\Throwable $e) {
-                    try {
-                        $tanggalInput = Carbon::createFromFormat('d/m/Y', trim((string)$row[1]));
-                    } catch (\Throwable $e2) {
-                        $tanggalInput = now();
-                    }
-                }
-            }
+            $tanggalInput = \App\Services\PritiSyncService::parseInputDate($row[1] ?? null);
 
             // Hasil Visit & PTP
             $hasilVisit = !empty($row[7]) ? trim((string)$row[7]) : 'Belum Diisi';

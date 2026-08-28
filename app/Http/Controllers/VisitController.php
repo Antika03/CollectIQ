@@ -20,111 +20,123 @@ class VisitController extends Controller
     {
         /*
         |--------------------------------------------------------------------------
-        | Daftar AR Agent untuk dropdown filter (hanya yang aktif / unik)
+        | 1. Dropdown filter options (Cached 5 menit untuk akses super cepat)
         |--------------------------------------------------------------------------
         */
-        $arAgents = ArAgent::orderBy('name')->get();
+        $arAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
+            return ArAgent::orderBy('name')->get();
+        });
+
+        $filterOptions = \Illuminate\Support\Facades\Cache::remember('visit_filter_options', 300, function () {
+            return [
+                'hasil'    => Visit::whereNotNull('hasil_visit')->where('hasil_visit', '!=', '')->distinct()->orderBy('hasil_visit')->pluck('hasil_visit'),
+                'kategori' => Visit::whereNotNull('kategori_visit')->where('kategori_visit', '!=', '')->distinct()->orderBy('kategori_visit')->pluck('kategori_visit'),
+            ];
+        });
+
+        $hasilVisitOptions = $filterOptions['hasil'];
+        $kategoriOptions   = $filterOptions['kategori'];
 
         /*
         |--------------------------------------------------------------------------
-        | Nilai unik hasil_visit & kategori_visit dari database
+        | 2. KPI Metrics (Cached 60 detik)
         |--------------------------------------------------------------------------
         */
-        $hasilVisitOptions = Visit::whereNotNull('hasil_visit')
-            ->where('hasil_visit', '!=', '')
-            ->distinct()
-            ->orderBy('hasil_visit')
-            ->pluck('hasil_visit');
+        $kpis = \Illuminate\Support\Facades\Cache::remember('visit_kpi_summary', 60, function () {
+            $totalVisit       = Visit::count();
+            $visitHariIni     = Visit::whereDate('tanggal_input', today())->count();
+            $totalPtp         = Visit::where('is_ptp', true)->count();
+            $ptpHariIni       = Visit::whereDate('tanggal_input', today())->where('is_ptp', true)->count();
+            $contactedCount   = Visit::whereNotNull('hasil_visit')
+                                    ->where('hasil_visit', '!=', '')
+                                    ->where('hasil_visit', '!=', 'Belum Diisi')
+                                    ->where('hasil_visit', '!=', '-')
+                                    ->count();
+            $notContactedCount = Visit::where(function ($q) {
+                $q->whereNull('hasil_visit')
+                  ->orWhere('hasil_visit', '')
+                  ->orWhere('hasil_visit', 'Belum Diisi')
+                  ->orWhere('hasil_visit', '-');
+            })->count();
 
-        $kategoriOptions = Visit::whereNotNull('kategori_visit')
-            ->where('kategori_visit', '!=', '')
-            ->distinct()
-            ->orderBy('kategori_visit')
-            ->pluck('kategori_visit');
+            return compact('totalVisit', 'visitHariIni', 'totalPtp', 'ptpHariIni', 'contactedCount', 'notContactedCount');
+        });
+
+        $totalVisit        = $kpis['totalVisit'];
+        $visitHariIni      = $kpis['visitHariIni'];
+        $totalPtp          = $kpis['totalPtp'];
+        $ptpHariIni        = $kpis['ptpHariIni'];
+        $contactedCount    = $kpis['contactedCount'];
+        $notContactedCount = $kpis['notContactedCount'];
 
         /*
         |--------------------------------------------------------------------------
-        | KPI — dihitung dari data asli database
+        | 3. Chart: Trend visit harian 14 hari terakhir (Cached 60 detik)
         |--------------------------------------------------------------------------
         */
-        $totalVisit     = Visit::count();
-        $visitHariIni   = Visit::whereDate('tanggal_input', today())->count();
-        $totalPtp       = Visit::where('is_ptp', true)->count();
-        $ptpHariIni     = Visit::whereDate('tanggal_input', today())->where('is_ptp', true)->count();
+        $chartData = \Illuminate\Support\Facades\Cache::remember('visit_chart_trend', 60, function () {
+            $rangeStart = Carbon::today()->subDays(13);
 
-        // "Contacted" = hasil_visit terisi & bukan kosong/belum diisi
-        $contactedCount = Visit::whereNotNull('hasil_visit')
-            ->where('hasil_visit', '!=', '')
-            ->where('hasil_visit', '!=', 'Belum Diisi')
-            ->where('hasil_visit', '!=', '-')
-            ->count();
+            $dailyRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
+                ->selectRaw('tanggal_input, COUNT(*) as total')
+                ->groupBy('tanggal_input')
+                ->pluck('total', 'tanggal_input')
+                ->toArray();
 
-        // "Not Contacted" = hasil_visit null / kosong / belum diisi
-        $notContactedCount = Visit::where(function ($q) {
-            $q->whereNull('hasil_visit')
-              ->orWhere('hasil_visit', '')
-              ->orWhere('hasil_visit', 'Belum Diisi')
-              ->orWhere('hasil_visit', '-');
-        })->count();
+            $dailyPtpRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
+                ->where('is_ptp', true)
+                ->selectRaw('tanggal_input, COUNT(*) as total')
+                ->groupBy('tanggal_input')
+                ->pluck('total', 'tanggal_input')
+                ->toArray();
+
+            $chartLabels  = [];
+            $chartVisits  = [];
+            $chartPtp     = [];
+
+            for ($i = 0; $i < 14; $i++) {
+                $date           = $rangeStart->copy()->addDays($i);
+                $key            = $date->format('Y-m-d');
+                $chartLabels[]  = $date->format('d/m');
+                $chartVisits[]  = $dailyRaw[$key] ?? 0;
+                $chartPtp[]     = $dailyPtpRaw[$key] ?? 0;
+            }
+
+            return compact('chartLabels', 'chartVisits', 'chartPtp');
+        });
+
+        $chartLabels = $chartData['chartLabels'];
+        $chartVisits = $chartData['chartVisits'];
+        $chartPtp    = $chartData['chartPtp'];
 
         /*
         |--------------------------------------------------------------------------
-        | Chart: Trend visit harian 14 hari terakhir
+        | 4. Chart: Distribusi & AR stats (Cached 60 detik)
         |--------------------------------------------------------------------------
         */
-        $rangeStart = Carbon::today()->subDays(13);
+        $extraStats = \Illuminate\Support\Facades\Cache::remember('visit_extra_stats', 60, function () {
+            $hasilDistribution = Visit::whereNotNull('hasil_visit')
+                ->where('hasil_visit', '!=', '')
+                ->selectRaw('hasil_visit, COUNT(*) as total')
+                ->groupBy('hasil_visit')
+                ->orderByDesc('total')
+                ->take(8)
+                ->get();
 
-        $dailyRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
-            ->selectRaw('tanggal_input, COUNT(*) as total')
-            ->groupBy('tanggal_input')
-            ->pluck('total', 'tanggal_input')
-            ->toArray();
+            $agentStats = ArAgent::withCount('visits')
+                ->orderByDesc('visits_count')
+                ->take(8)
+                ->get();
 
-        $dailyPtpRaw = Visit::whereDate('tanggal_input', '>=', $rangeStart)
-            ->where('is_ptp', true)
-            ->selectRaw('tanggal_input, COUNT(*) as total')
-            ->groupBy('tanggal_input')
-            ->pluck('total', 'tanggal_input')
-            ->toArray();
+            return compact('hasilDistribution', 'agentStats');
+        });
 
-        $chartLabels  = [];
-        $chartVisits  = [];
-        $chartPtp     = [];
-
-        for ($i = 0; $i < 14; $i++) {
-            $date           = $rangeStart->copy()->addDays($i);
-            $key            = $date->format('Y-m-d');
-            $chartLabels[]  = $date->format('d/m');
-            $chartVisits[]  = $dailyRaw[$key] ?? 0;
-            $chartPtp[]     = $dailyPtpRaw[$key] ?? 0;
-        }
+        $hasilDistribution = $extraStats['hasilDistribution'];
+        $agentStats        = $extraStats['agentStats'];
 
         /*
         |--------------------------------------------------------------------------
-        | Chart: Distribusi hasil_visit
-        |--------------------------------------------------------------------------
-        */
-        $hasilDistribution = Visit::whereNotNull('hasil_visit')
-            ->where('hasil_visit', '!=', '')
-            ->selectRaw('hasil_visit, COUNT(*) as total')
-            ->groupBy('hasil_visit')
-            ->orderByDesc('total')
-            ->take(8)
-            ->get();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Chart: Visit per AR Agent (top 8)
-        |--------------------------------------------------------------------------
-        */
-        $agentStats = ArAgent::withCount('visits')
-            ->orderByDesc('visits_count')
-            ->take(8)
-            ->get();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Query utama Visit dengan filter
+        | 5. Query utama Visit dengan filter (Optimized)
         |--------------------------------------------------------------------------
         */
         $query = Visit::with(['customer', 'arAgent'])

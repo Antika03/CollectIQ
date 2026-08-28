@@ -84,28 +84,45 @@ class CustomerController extends Controller
             ->paginate(25)
             ->withQueryString();
 
-        $baseCountQuery = Customer::query();
-        if ($user && $user->isAr() && $user->ar_agent_id) {
-            $arId = $user->ar_agent_id;
-            $baseCountQuery->where(function ($q) use ($arId) {
-                $q->where('assigned_ar_agent_id', $arId)
-                  ->orWhereHas('visits', function ($vq) use ($arId) {
-                      $vq->where('ar_agent_id', $arId);
-                  });
-            });
-        }
+        $cacheKey = ($user && $user->isAr() && $user->ar_agent_id) 
+            ? 'cust_kpis_ar_' . $user->ar_agent_id 
+            : 'cust_kpis_admin';
 
-        $totalCustomers = (clone $baseCountQuery)->count();
-        $highRiskCount  = (clone $baseCountQuery)->whereIn('risk_level', ['high', 'critical'])->count();
-        $activePtpCount = (clone $baseCountQuery)->where('pending_ptp_count', '>', 0)->count();
-        $pranpcCount    = (clone $baseCountQuery)->where('is_pranpc', true)->count();
-        $totalPiutang   = (clone $baseCountQuery)->sum('saldo_piutang');
-        $staleCount     = (clone $baseCountQuery)->where(function ($q) {
-            $q->whereNull('last_visit_at')
-              ->orWhere('last_visit_at', '<=', now()->subDays(14));
-        })->count();
+        $kpiData = \Illuminate\Support\Facades\Cache::remember($cacheKey, 60, function () use ($user) {
+            $baseCountQuery = Customer::query();
+            if ($user && $user->isAr() && $user->ar_agent_id) {
+                $arId = $user->ar_agent_id;
+                $baseCountQuery->where(function ($q) use ($arId) {
+                    $q->where('assigned_ar_agent_id', $arId)
+                      ->orWhereHas('visits', function ($vq) use ($arId) {
+                          $vq->where('ar_agent_id', $arId);
+                      });
+                });
+            }
 
-        $allAgents = ArAgent::where('is_active', true)->orderBy('name')->get();
+            return [
+                'totalCustomers' => (clone $baseCountQuery)->count(),
+                'highRiskCount'  => (clone $baseCountQuery)->whereIn('risk_level', ['high', 'critical'])->count(),
+                'activePtpCount' => (clone $baseCountQuery)->where('pending_ptp_count', '>', 0)->count(),
+                'pranpcCount'    => (clone $baseCountQuery)->where('is_pranpc', true)->count(),
+                'totalPiutang'   => (clone $baseCountQuery)->sum('saldo_piutang'),
+                'staleCount'     => (clone $baseCountQuery)->where(function ($q) {
+                    $q->whereNull('last_visit_at')
+                      ->orWhere('last_visit_at', '<=', now()->subDays(14));
+                })->count(),
+            ];
+        });
+
+        $totalCustomers = $kpiData['totalCustomers'];
+        $highRiskCount  = $kpiData['highRiskCount'];
+        $activePtpCount = $kpiData['activePtpCount'];
+        $pranpcCount    = $kpiData['pranpcCount'];
+        $totalPiutang   = $kpiData['totalPiutang'];
+        $staleCount     = $kpiData['staleCount'];
+
+        $allAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
+            return ArAgent::where('is_active', true)->orderBy('name')->get();
+        });
 
         return view('customers.index', [
             'customers'      => $customers,
@@ -143,8 +160,11 @@ class CustomerController extends Controller
         ]);
 
         $churnEval = ChurnRiskService::evaluateCustomer($customer);
+        $allAgents = \Illuminate\Support\Facades\Cache::remember('ar_agents_all', 300, function () {
+            return ArAgent::where('is_active', true)->orderBy('name')->get();
+        });
 
-        return view('customers.show', compact('customer', 'churnEval'));
+        return view('customers.show', compact('customer', 'churnEval', 'allAgents'));
     }
 
     /**

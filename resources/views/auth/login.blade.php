@@ -178,19 +178,9 @@ body {
         </button>
     </form>
 
-    <div class="quick-login-box">
-        <div style="font-weight: 700; color: #334155; margin-bottom: 4px;">
-            <i class="bi bi-info-circle"></i> Info Akun Demo:
-        </div>
-        <div style="color: #64748B; line-height: 1.5;">
-            • <b>Admin:</b> <code>admin@telkom.co.id</code> (PW: <code>AdminTelkom#2026</code>)<br>
-            • <b>AR:</b> <code>tatang@telkom.co.id</code> atau <code>sayus@telkom.co.id</code> (PW: <code>ArTelkom#2026</code>)
-        </div>
-    </div>
-
     <div class="login-footer">
         &copy; {{ date('Y') }} PT Telekomunikasi Indonesia Tbk.<br>
-        Collection & Account Representative — Witel Priangan Timur
+        Collection &amp; Account Representative — Witel Priangan Timur
     </div>
 </div>
 
