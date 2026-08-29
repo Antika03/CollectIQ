@@ -64,21 +64,44 @@ class TelegramChatTest extends TestCase
         $response->assertSessionHas('success');
     }
 
-    public function test_automatic_telegram_reminders_command_is_disabled()
+    public function test_telegram_ui_elements_are_completely_removed_from_views()
     {
-        $this->artisan('collectiq:send-telegram-reminders')
-            ->expectsOutput('Automatic daily Telegram reminder telah dinonaktifkan sesuai requirement sistem.')
-            ->assertExitCode(0);
-    }
+        $admin = User::factory()->create(['role' => 'admin']);
+        $agent = ArAgent::create([
+            'name'             => 'AR Test UI Check',
+            'chat_id_telegram' => '999888777',
+            'is_active'        => true,
+        ]);
+        $customer = Customer::create([
+            'nomor_internet' => '131499990099',
+            'nama_pelanggan' => 'Pelanggan Test UI',
+            'saldo_piutang'  => 500000,
+        ]);
 
-    public function test_send_daily_reminders_service_is_deactivated()
-    {
-        $service = new TelegramService();
-        $result = $service->sendDailyReminders();
+        // 1. Settings view check
+        $settingsResp = $this->actingAs($admin)->get('/settings');
+        $settingsResp->assertStatus(200);
+        $settingsResp->assertDontSee('Integrasi Telegram Bot (Opsional)');
+        $settingsResp->assertDontSee('Aktifkan Integrasi Bot');
+        $settingsResp->assertDontSee('Waktu Pagi (WIB)');
+        $settingsResp->assertDontSee('Waktu Sore (WIB)');
+        $settingsResp->assertDontSee('Status & Uji Bot Telegram');
+        $settingsResp->assertDontSee('Test Koneksi Bot');
+        $settingsResp->assertDontSee('Kirim Reminder Sekarang');
+        $settingsResp->assertDontSee('Bot Aktif');
 
-        $this->assertTrue($result['success']);
-        $this->assertEquals(0, $result['sent']);
-        $this->assertEquals(0, $result['failed']);
-        $this->assertStringContainsString('dinonaktifkan', $result['message']);
+        // 2. Customer Show view check
+        $custResp = $this->actingAs($admin)->get('/customers/' . $customer->id);
+        $custResp->assertStatus(200);
+        $custResp->assertDontSee('Kirim ke Telegram AR');
+        $custResp->assertDontSee('Disposisi Pelanggan ke Telegram AR');
+        $custResp->assertDontSee('modalSendTelegram');
+        $custResp->assertDontSee('Kirim Notifikasi Telegram');
+
+        // 3. AR Agents view check
+        $arResp = $this->actingAs($admin)->get('/ar-agents');
+        $arResp->assertStatus(200);
+        $arResp->assertDontSee('modalTelegramChat');
+        $arResp->assertDontSee('Kirim Pesan Telegram');
     }
 }

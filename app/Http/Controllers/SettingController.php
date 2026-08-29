@@ -21,9 +21,6 @@ class SettingController extends Controller
         $lastSyncFormatted = C3mrSyncService::formatIndonesianDate($setting?->last_sync_at);
         $lastSyncStatus    = $setting?->last_sync_status;
 
-        $telegramService = new TelegramService();
-        $botStatus = $telegramService->testConnection();
-
         return view('settings.index', compact(
             'setting',
             'activeC3mrUrl',
@@ -31,8 +28,7 @@ class SettingController extends Controller
             'activePritiUrl',
             'pritiSheetId',
             'lastSyncFormatted',
-            'lastSyncStatus',
-            'botStatus'
+            'lastSyncStatus'
         ));
     }
 
@@ -61,20 +57,13 @@ class SettingController extends Controller
             return back()->withInput()->with('error', "PRITI: " . $valPriti['message']);
         }
 
-        $reminderEnabled = $request->boolean('telegram_reminder_enabled');
-        $morningTime     = $request->input('telegram_morning_time', '08:30');
-        $afternoonTime   = $request->input('telegram_afternoon_time', '15:30');
-
         $setting = Setting::first();
 
         $payload = [
-            'c3mr_url'                  => $c3mrUrl,
-            'priti_url'                 => $pritiUrl,
-            'report_prq_url'            => $c3mrUrl,
-            'viseepro_url'              => $c3mrUrl,
-            'telegram_reminder_enabled' => $reminderEnabled,
-            'telegram_morning_time'     => $morningTime,
-            'telegram_afternoon_time'   => $afternoonTime,
+            'c3mr_url'       => $c3mrUrl,
+            'priti_url'      => $pritiUrl,
+            'report_prq_url' => $c3mrUrl,
+            'viseepro_url'   => $c3mrUrl,
         ];
 
         if (!$setting) {
@@ -83,7 +72,7 @@ class SettingController extends Controller
             $setting->update($payload);
         }
 
-        return back()->with('success', 'Pengaturan Spreadsheet PRITI DATA, C3MR & Telegram berhasil disimpan.');
+        return back()->with('success', 'Pengaturan Sumber Spreadsheet PRITI DATA & C3MR berhasil disimpan.');
     }
 
     public function testTelegram(Request $request)

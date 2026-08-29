@@ -162,14 +162,6 @@
                                    title="Lihat Rekap Kunjungan Visit Petugas" data-bs-toggle="tooltip">
                                     <i class="bi bi-geo-alt"></i> Visit
                                 </a>
-                                @if($agent->chat_id_telegram)
-                                    <button type="button" class="btn btn-sm btn-outline-primary"
-                                            style="font-size:11.5px; padding:3px 8px; white-space:nowrap; background:#EFF6FF; color:#1D4ED8; border-color:#BFDBFE;"
-                                            onclick="openTelegramChatModal({{ $agent->id }}, '{{ addslashes($agent->name) }}', '{{ $agent->chat_id_telegram }}')"
-                                            title="Kirim Pesan Telegram Langsung">
-                                        <i class="bi bi-telegram"></i> Chat
-                                    </button>
-                                @endif
                             </div>
                         </td>
                     </tr>
@@ -189,66 +181,5 @@
         {{ $agents->links() }}
     </div>
 </div>
-
-{{-- MODAL CHAT TELEGRAM --}}
-<div class="modal fade" id="modalTelegramChat" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content" style="border-radius:14px; border:none; box-shadow:0 20px 25px -5px rgba(0,0,0,0.1);">
-            <div class="modal-header" style="background:#0F172A; color:#FFFFFF; border-radius:14px 14px 0 0; padding:16px 20px;">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="bi bi-telegram" style="color:#38BDF8; font-size:20px;"></i>
-                    <div>
-                        <h6 class="modal-title mb-0" id="telegramModalTitle" style="font-weight:700; font-size:15px;">Kirim Pesan Telegram</h6>
-                        <small style="color:#94A3B8; font-size:11.5px;">Notifikasi instan ke akun Telegram AR Agent</small>
-                    </div>
-                </div>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <form action="{{ route('telegram.send') }}" method="POST" id="formTelegramChat">
-                @csrf
-                <input type="hidden" name="ar_agent_id" id="chatArAgentId">
-                <div class="modal-body" style="padding:20px;">
-                    <div class="mb-3">
-                        <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink-700);">Target AR Agent</label>
-                        <input type="text" id="chatArAgentName" class="form-control form-control-sm" readonly style="background:#F1F5F9; font-weight:600;">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label" style="font-size:12px; font-weight:700; color:var(--ink-700);">Pesan Telegram</label>
-                        <textarea name="message" id="chatMessage" rows="5" class="form-control" placeholder="Ketik pesan atau instruksi collection di sini..." required style="font-size:13px; border-radius:8px;"></textarea>
-                    </div>
-                    <div class="d-flex gap-1 flex-wrap">
-                        <button type="button" class="btn btn-sm btn-light" style="font-size:11px; border:1px solid #E2E8F0;" onclick="insertQuickChat('reminder')">⚡ Quick: Reminder Visit</button>
-                        <button type="button" class="btn btn-sm btn-light" style="font-size:11px; border:1px solid #E2E8F0;" onclick="insertQuickChat('ptp')">💰 Quick: Follow-up PTP</button>
-                    </div>
-                </div>
-                <div class="modal-footer" style="background:#F8FAFC; border-top:1px solid var(--border); border-radius:0 0 14px 14px; padding:12px 20px;">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" style="border-radius:8px;">Batal</button>
-                    <button type="submit" class="btn btn-sm text-white" style="background:#0284C7; border:none; font-weight:700; border-radius:8px; display:inline-flex; align-items:center; gap:6px;">
-                        <i class="bi bi-send-fill"></i> Kirim ke Telegram
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-
-<script>
-function openTelegramChatModal(agentId, agentName, chatId) {
-    document.getElementById('chatArAgentId').value = agentId;
-    document.getElementById('chatArAgentName').value = agentName + ' (Chat ID: ' + chatId + ')';
-    document.getElementById('chatMessage').value = "Halo Kak " + agentName + ",\n\nMohon lakukan follow-up dan pengecekan tagihan pelanggan hari ini. Terima kasih!";
-    const modal = new bootstrap.Modal(document.getElementById('modalTelegramChat'));
-    modal.show();
-}
-
-function insertQuickChat(type) {
-    const name = document.getElementById('chatArAgentName').value.split(' (')[0];
-    if (type === 'reminder') {
-        document.getElementById('chatMessage').value = "Halo Kak " + name + ",\n\n📋 Reminder: Jangan lupa melakukan kunjungan visit dan update hasil collection pada pelanggan prioritas hari ini. Semangat!";
-    } else if (type === 'ptp') {
-        document.getElementById('chatMessage').value = "Halo Kak " + name + ",\n\n🤝 Follow-up: Mohon cek komitmen janji bayar (PTP) yang jatuh tempo hari ini dan lakukan konfirmasi pembayaran.";
-    }
-}
-</script>
 
 @endsection

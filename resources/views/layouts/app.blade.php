@@ -572,7 +572,7 @@ body{
             <div class="sidebar-menu-label">System</div>
             <div class="menu">
                 <a href="{{ route('settings.index') }}" class="{{ request()->routeIs('settings*') ? 'active' : '' }}">
-                    <i class="bi bi-gear-fill"></i> Settings & Telegram
+                    <i class="bi bi-gear-fill"></i> Pengaturan Sistem
                 </a>
             </div>
         </div>

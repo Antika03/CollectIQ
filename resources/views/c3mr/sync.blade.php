@@ -154,7 +154,7 @@
                 </div>
                 <div style="font-size:12.5px; color:var(--ink-700); line-height:1.6;">
                     • <b>Kunjungan Lapangan:</b> Diimpor langsung tanpa copy-paste manual.<br>
-                    • <b>Kontak & Chat ID:</b> Nomor HP update & Chat ID Telegram AR dipetakan otomatis.<br>
+                    • <b>Kontak Pelanggan:</b> Nomor HP update dan snapshot kunjungan dipetakan otomatis.<br>
                     • <b>Hasil & Kategori:</b> Dinormalisasi (Janji Bayar/PTP, PDK, Tolak Bayar, dll).<br>
                     • <b>Foto Bukti:</b> Tautan Google Drive foto terhubung ke detail customer.
                 </div>
